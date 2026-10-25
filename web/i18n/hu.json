@@ -1,0 +1,17 @@
+{
+  "app.name": "Solenna",
+  "nav.label": "Fő navigáció",
+  "nav.weight": "Testsúly",
+  "nav.cycle": "Ciklus",
+  "nav.settings": "Beállítások",
+  "weight.title": "Testsúly",
+  "weight.empty": "Még nincs mérés.",
+  "cycle.title": "Ciklus",
+  "cycle.empty": "Még nincs rögzített menstruáció.",
+  "settings.title": "Beállítások",
+  "settings.language": "Nyelv",
+  "language.en": "English",
+  "language.hu": "Magyar",
+  "notFound.title": "Az oldal nem található",
+  "notFound.back": "Ugrás a testsúlyhoz"
+}

@@ -44,15 +44,17 @@ web/               static frontend, served as-is
   sw.js
   css/
   js/
-    app.js         entry point, router
+    app.js         entry point, path → view map, nav, render
+    router.js      HOME, navigate(), link interception
     api.js         fetch wrapper
+    dom.js         h() element helper
     store.js       state + subscribe
     i18n.js        t() + language selection
     views/         one module per screen
   i18n/
-    en.js
-    hu.js
-  icons/
+    en.json
+    hu.json
+  icons/           SVG icons (UI icons are used as CSS masks)
 Dockerfile
 compose.yaml
 .env.example       placeholder values only
@@ -93,10 +95,13 @@ This app stores health data. Treat it accordingly.
 
 ## Frontend conventions
 
-- **No build step.** Files in `web/` are served exactly as written. Use `<script type="module">` and relative imports.
-- **One rendering pattern, used everywhere:** state lives in `store.js`. Each view exports `render(container, state)`, which rebuilds its subtree from state. User actions call `api.js`, update the store, and the store re-renders. Don't hand-patch individual DOM nodes from event handlers.
+- **Supported browsers:** current evergreen browsers, minimum Chrome/Edge 123, Firefox 138, Safari/iOS 17.2. That's what JSON module imports and CSS nesting need. Older browsers get a blank page. That's a deliberate trade-off for no build step, so don't add polyfills or transpiling.
+- **No build step.** Files in `web/` are served exactly as written. Use `<script type="module">` and relative imports between modules. `index.html` references assets with absolute paths (`/css/app.css`), because it is also served for app routes like `/weight`.
+- **Routing:** real paths via the History API (`/weight`, `/cycle`, `/settings`). `router.js` owns `HOME`, `navigate()`, link interception and back/forward. It imports no views, so views can use it without an import cycle. The path → view map lives in `app.js`. Same-origin `<a href>` clicks are intercepted. The current path lives in the store.
+- **One rendering pattern, used everywhere:** state lives in `store.js`. Each view exports `title` (an i18n key) and `render(container, state)`, which rebuilds its subtree from state. User actions call `api.js`, update the store, and the store re-renders. Don't hand-patch individual DOM nodes from event handlers. Form inputs keep their own DOM state while the user types; only submitted values go into the store.
+- **No inline scripts or styles** (the CSP forbids them): no `<script>` bodies, no `style="..."` attributes, no `on*=` attributes. Use classes and `addEventListener` (the `h()` helper's `on*` props).
 - **XSS:** never put user-provided or API data into `innerHTML`. Build elements with `document.createElement` / `textContent`, or the small `h()` helper in `js/dom.js`.
-- **i18n:** English and Hungarian. Every user-visible string goes through `t('key')`. No hardcoded UI text. Dictionaries are flat key → string objects in `web/i18n/en.js` and `hu.js`, and both must always have the same keys. Language comes from the user setting, falling back to `navigator.language`, then English. Format dates and numbers with `Intl`, using the active locale.
+- **i18n:** English and Hungarian. Every user-visible string goes through `t('key')`. No hardcoded UI text. The one exception is the bilingual `<noscript>` text in `index.html`, since `t()` can't run there. Dictionaries are flat key → string JSON objects in `web/i18n/en.json` and `hu.json`, imported as JSON modules. Keys are always written out as complete single-quoted literals (`t('nav.weight')`, or `label: 'nav.weight'` passed to `t()` later), never built dynamically (`` t(`nav.${x}`) ``). `cargo test` treats every single-quoted `section.name`-shaped literal in `web/js` as a key. It checks that both files have the same keys and placeholders, that every key used exists, and that every defined key is used. Other string literals must not look like keys (use `solenna-lang`, not `solenna.lang`). The extraction is a simple heuristic: it pairs up `'` characters per line. So an apostrophe earlier on the same line (`"don't"` in a double-quoted string, or a template literal) can make it miss the keys after it. If the test reports a key as unused that clearly is used, look for a stray apostrophe on that line and move the key to its own line. Interpolation uses `{name}` placeholders: `t('key', { name })`. Language comes from the user setting, falling back to `navigator.language`, then English. Format dates and numbers with `Intl`, using the active locale.
 - **CSS:** modern plain CSS (custom properties, nesting, grid, container queries). Design mobile-first. Desktop gets a wider layout through media/container queries, not a separate UI. Theme colors are defined as custom properties on `:root`, and dark mode is supported via `prefers-color-scheme`.
 - **Accessibility:** semantic HTML, real `<button>`s and `<label>`s, visible focus styles, and touch targets of at least 44px.
 

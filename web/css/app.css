@@ -1,0 +1,222 @@
+/* Theme tokens. Dark mode follows the OS setting. */
+:root {
+  color-scheme: light dark;
+
+  --bg: #faf8f9;
+  --surface: #ffffff;
+  --text: #1f1a1d;
+  --text-muted: #6b6268;
+  --border: #e7e1e4;
+  --accent: #b83a64;
+  --accent-soft: #f9e6ed;
+
+  --radius: 12px;
+  --nav-height: 64px;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #151215;
+    --surface: #1f1a1e;
+    --text: #f2edf0;
+    --text-muted: #a89ea4;
+    --border: #342c31;
+    --accent: #f08cad;
+    --accent-soft: #3a2430;
+  }
+}
+
+/* Base */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 var(--font);
+}
+
+h1 {
+  margin: 0 0 1rem;
+  font-size: 1.75rem;
+  line-height: 1.2;
+}
+
+a {
+  color: var(--accent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Headings get programmatic focus after navigation; no ring for that. */
+[tabindex="-1"]:focus {
+  outline: none;
+}
+
+/* Icons: SVG files used as masks, so they take the current text color. */
+.icon {
+  display: inline-block;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  background-color: currentColor;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+}
+
+.icon-weight { mask-image: url("../icons/weight.svg"); }
+.icon-cycle { mask-image: url("../icons/cycle.svg"); }
+.icon-settings { mask-image: url("../icons/settings.svg"); }
+
+/* Layout: mobile first, bottom tab bar */
+.app {
+  min-height: 100dvh;
+}
+
+.main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem calc(var(--nav-height) + env(safe-area-inset-bottom) + 1.5rem);
+}
+
+.nav {
+  position: fixed;
+  inset: auto 0 0;
+  z-index: 10;
+  padding-bottom: env(safe-area-inset-bottom);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+
+.nav-brand {
+  display: none;
+}
+
+.nav-list {
+  display: flex;
+  height: var(--nav-height);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  & li {
+    flex: 1;
+  }
+}
+
+.nav-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 100%;
+  min-height: 44px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-decoration: none;
+
+  &[aria-current="page"] {
+    color: var(--accent);
+  }
+}
+
+/* Desktop: sidebar */
+@media (min-width: 768px) {
+  .app {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+  }
+
+  .main {
+    width: 100%;
+    padding: 2.5rem 2rem;
+  }
+
+  .nav {
+    position: sticky;
+    top: 0;
+    height: 100dvh;
+    padding: 1.5rem 0.75rem;
+    border-top: none;
+    border-right: 1px solid var(--border);
+  }
+
+  .nav-brand {
+    display: block;
+    padding: 0 0.75rem 1.5rem;
+    color: var(--accent);
+    font-size: 1.25rem;
+    font-weight: 700;
+  }
+
+  .nav-list {
+    flex-direction: column;
+    gap: 4px;
+    height: auto;
+  }
+
+  .nav-link {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 0.75rem;
+    padding: 0 0.75rem;
+    border-radius: var(--radius);
+    font-size: 1rem;
+
+    &[aria-current="page"] {
+      background: var(--accent-soft);
+    }
+  }
+}
+
+@media (hover: hover) {
+  .nav-link:hover {
+    color: var(--text);
+  }
+}
+
+/* Components */
+.card {
+  margin: 0;
+  padding: 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.empty {
+  color: var(--text-muted);
+}
+
+.field {
+  display: grid;
+  gap: 0.5rem;
+
+  & label {
+    font-weight: 600;
+  }
+
+  & select {
+    min-height: 44px;
+    padding: 0 0.75rem;
+    color: var(--text);
+    font: inherit;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+}

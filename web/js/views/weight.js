@@ -1,0 +1,11 @@
+import { h } from '../dom.js';
+import { t } from '../i18n.js';
+
+export const title = 'weight.title';
+
+export function render(container) {
+  container.append(
+    h('h1', { tabindex: '-1' }, t('weight.title')),
+    h('p', { class: 'card empty' }, t('weight.empty')),
+  );
+}
