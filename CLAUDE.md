@@ -24,7 +24,7 @@ The whole codebase is written by AI. Optimize for **simplicity and readability**
 - Analytics, tracking, or telemetry of any kind
 
 ### Dependency policy
-Keep direct dependencies minimal. The expected Rust crates are: `axum`, `tokio`, `tower-http`, `serde`, `serde_json`, `rusqlite`, `reqwest` (with `rustls-tls`, no OpenSSL), `rust-embed`, `rand`, `sha2`, `base64`, `time`, `tracing` + `tracing-subscriber`. Adding anything else needs a one-line justification in the commit message, and it must be something that is hard to write correctly ourselves. A small frontend library may be vendored into `web/vendor/` only if it clearly earns its place. Never pull one from a CDN.
+Keep direct dependencies minimal. The expected Rust crates are: `axum`, `tokio`, `tower-http`, `serde`, `serde_json`, `rusqlite`, `reqwest` (`default-features = false`, features `rustls`, `json`, `form`; no OpenSSL), `rust-embed`, `getrandom`, `sha2`, `base64`, `tracing` + `tracing-subscriber`. Dev-only: `tower` (`ServiceExt::oneshot` for router tests). Adding anything else needs a one-line justification in the commit message, and it must be something that is hard to write correctly ourselves. A small frontend library may be vendored into `web/vendor/` only if it clearly earns its place. Never pull one from a CDN.
 
 ## Repo layout
 
@@ -76,12 +76,21 @@ compose.yaml
 
 ## Auth
 
+All of this lives in `server/src/auth.rs`.
+
 - Google OIDC **authorization code flow**, done server-side, with `state` + PKCE. Routes: `GET /auth/google` → Google → `GET /auth/google/callback`.
+- `state` and the PKCE verifier live in a short-lived (10 min) HttpOnly cookie scoped to `/auth`, not in the DB. The callback compares `state` before it talks to Google.
 - Read the ID token from the token endpoint response (it comes back over TLS directly from Google). Check `iss`, `aud`, and `exp`. Identify users by the **`sub` claim**, never by email. Store the email and name for display only.
+- A failed or cancelled sign-in redirects to `/?auth_error=failed|cancelled`. The frontend reads the parameter, removes it from the URL, and shows the message on the login screen.
 - **Open signup:** any Google account can sign in, and a user row is created on first login.
-- **Sessions:** a random 32-byte token sent to the browser as a cookie (`HttpOnly; Secure; SameSite=Lax; Path=/`). The DB stores only the **SHA-256 hash** of the token. Sessions expire (30 days, sliding).
-- **CSRF:** `SameSite=Lax`, and every state-changing API request must be `Content-Type: application/json`. Reject anything else.
-- `POST /auth/logout` deletes the session row.
+- **Sessions:** a random 32-byte token sent to the browser as a cookie (`HttpOnly; SameSite=Lax; Path=/`, plus `Secure` when `SOLENNA_BASE_URL` is https). The DB stores only the **SHA-256 hash** of the token. The server-side expiry is 30 days, sliding, and the extension is written at most once a day per session. The cookie's own `Max-Age` is long (400 days), because the DB expiry is what counts.
+- **Handlers get the user from the `CurrentUser` extractor.** Adding it as a handler argument makes the route require a session (401 otherwise), and `user.id` is the only source of the user ID.
+- **CSRF:** `SameSite=Lax`, and every state-changing request must be `Content-Type: application/json`. A global middleware returns 415 for anything else, `/auth/logout` included. The frontend's `api()` always sends the header for non-GET requests.
+- `POST /auth/logout` deletes the session row and clears the cookie.
+- **Rate limit:** one global fixed window (60/min) on the callback's call to Google, checked after the `state` check. That's the only auth step that does real work. `/auth/google` and logout are deliberately not limited: a shared counter on them would let anyone lock everyone out of signing in or out. It's not per-IP either, because that would mean trusting `X-Forwarded-For`.
+- **Signing in again replaces this browser's previous session.** Sessions on other devices stay.
+- **Sign-out only shows the login screen after the server confirms it.** Otherwise a reload would silently sign the user back in.
+- **Log only fixed strings from untrusted input:** the callback's `error` parameter is logged only if it's a known OAuth error code.
 
 ## Privacy and security
 
@@ -90,7 +99,6 @@ This app stores health data. Treat it accordingly.
 - Logs must never contain health values, tokens, cookies, or OAuth codes. Logging user IDs and routes is fine.
 - Users can **export all their data** (JSON) and **delete their account**, which hard-deletes all their rows.
 - Set security headers on every response: a strict CSP (`default-src 'self'`), `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`.
-- Rate-limit the auth endpoints.
 - HTTPS is terminated by a reverse proxy in front of the container. The app itself speaks plain HTTP and trusts `SOLENNA_BASE_URL` for building redirect URLs.
 
 ## Frontend conventions
@@ -130,7 +138,7 @@ For local dev, the app also reads `./.env` from the working directory, so `cargo
 
 - **Dev:** `cargo run` serves `web/` from disk, so frontend edits need only a browser refresh.
 - **Release:** `web/` is embedded into the binary with `rust-embed`.
-- **Dockerfile:** multi-stage, using `cargo-chef` for dependency caching. It builds on `rust:<version>-alpine`, which produces a static musl binary natively for the host architecture, and runs it on `scratch` as uid 10001. TLS uses rustls with bundled roots, so no system CA certificates are needed. Keep the builder image version at or above `rust-version` in `server/Cargo.toml`.
+- **Dockerfile:** multi-stage, using `cargo-chef` for dependency caching. It builds on `rust:<version>-alpine`, which produces a static musl binary natively for the host architecture, and runs it on `scratch` as uid 10001. TLS uses rustls (aws-lc-rs) with the platform certificate verifier. The Dockerfile copies Alpine's `ca-certificates.crt` into the image for it, so CA updates arrive with each rebuild. Keep the builder image version at or above `rust-version` in `server/Cargo.toml`.
 - The SQLite file lives on a volume mounted at `SOLENNA_DATA_DIR`. It is the only state.
 
 ## Testing

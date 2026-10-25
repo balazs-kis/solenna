@@ -9,6 +9,8 @@
   --border: #e7e1e4;
   --accent: #b83a64;
   --accent-soft: #f9e6ed;
+  --on-accent: #ffffff;
+  --error: #b42318;
 
   --radius: 12px;
   --nav-height: 64px;
@@ -24,6 +26,8 @@
     --border: #342c31;
     --accent: #f08cad;
     --accent-soft: #3a2430;
+    --on-accent: #1f1a1d;
+    --error: #ff8a80;
   }
 }
 
@@ -136,7 +140,7 @@ a {
 
 /* Desktop: sidebar */
 @media (min-width: 768px) {
-  .app {
+  .app:has(> .nav) {
     display: grid;
     grid-template-columns: 220px 1fr;
   }
@@ -218,5 +222,68 @@ a {
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 8px;
+  }
+}
+
+h2 {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.muted {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.error {
+  margin: 0;
+  color: var(--error);
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 1.25rem;
+  color: var(--on-accent);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  cursor: pointer;
+
+  &.secondary {
+    color: var(--text);
+    background: transparent;
+    border-color: var(--border);
+  }
+}
+
+/* Signed-out screens: one centered card, no nav. */
+.main-centered {
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  padding: 1.5rem 1rem;
+}
+
+.login-card {
+  display: grid;
+  gap: 1rem;
+  width: 100%;
+  max-width: 360px;
+  text-align: center;
+
+  & h1 {
+    margin: 0;
+    color: var(--accent);
   }
 }

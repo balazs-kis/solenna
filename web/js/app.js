@@ -1,8 +1,10 @@
+import { api } from './api.js';
 import { h } from './dom.js';
 import { activate, detectLanguage, t } from './i18n.js';
 import { startRouter } from './router.js';
 import { setState, subscribe } from './store.js';
 import * as cycle from './views/cycle.js';
+import * as login from './views/login.js';
 import * as notFound from './views/not-found.js';
 import * as settings from './views/settings.js';
 import * as weight from './views/weight.js';
@@ -22,17 +24,28 @@ const navItems = [
 const root = document.getElementById('app');
 let renderedPath = null;
 
+/**
+ * `state.user` is undefined while loading, null when signed out, and the
+ * profile object when signed in.
+ */
 function render(state) {
   activate(state.lang);
-  const view = routes[state.path] ?? notFound;
+
+  if (state.user === undefined) {
+    root.replaceChildren(state.loadFailed ? renderLoadFailed() : '');
+    return;
+  }
+
+  const signedIn = state.user !== null;
+  const view = signedIn ? (routes[state.path] ?? notFound) : login;
   document.title = `${t(view.title)} · ${t('app.name')}`;
 
   // Re-rendering replaces elements; keep keyboard focus on the same control.
   const focusedId = document.activeElement?.id;
 
-  const main = h('main', { class: 'main', id: 'main' });
+  const main = h('main', { class: signedIn ? 'main' : 'main main-centered', id: 'main' });
   view.render(main, state);
-  root.replaceChildren(renderNav(state), main);
+  root.replaceChildren(...(signedIn ? [renderNav(state), main] : [main]));
 
   if (state.path !== renderedPath && renderedPath !== null) {
     // After navigating, move focus to the new page's heading (screen readers announce it).
@@ -71,5 +84,37 @@ function renderNav(state) {
   );
 }
 
+function renderLoadFailed() {
+  return h(
+    'main',
+    { class: 'main main-centered' },
+    h(
+      'div',
+      { class: 'card login-card' },
+      h('p', { role: 'alert' }, t('app.loadFailed')),
+      h('button', { type: 'button', class: 'button', onclick: loadUser }, t('app.retry')),
+    ),
+  );
+}
+
+async function loadUser() {
+  setState({ loadFailed: false });
+  try {
+    setState({ user: await api('GET', '/api/me') });
+  } catch (error) {
+    // A 401 already set user to null (login screen); anything else is a failure to load.
+    if (error.status !== 401) setState({ loadFailed: true });
+  }
+}
+
+/** Reads and removes `?auth_error=` (set by the server after a failed sign-in). */
+function takeAuthError() {
+  const error = new URLSearchParams(location.search).get('auth_error');
+  if (error) history.replaceState(null, '', location.pathname);
+  return error;
+}
+
+const authError = takeAuthError();
 subscribe(render);
-setState({ path: startRouter(), lang: detectLanguage() });
+setState({ path: startRouter(), lang: detectLanguage(), authError });
+loadUser();

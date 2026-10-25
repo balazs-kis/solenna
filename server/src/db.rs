@@ -6,16 +6,24 @@
 use std::{
     path::Path,
     sync::{Arc, Mutex, PoisonError},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use rusqlite::Connection;
 
 use crate::error::AppError;
 
-/// Applied in order, e.g. `include_str!("../migrations/0001_init.sql")`. The DB's
-/// `PRAGMA user_version` is the number already applied. Migrations land together
-/// with the code that uses them. Never edit a committed migration; add a new one.
-const MIGRATIONS: &[&str] = &[];
+/// Applied in order. The DB's `PRAGMA user_version` is the number already applied.
+/// Migrations land together with the code that uses them. Never edit a committed
+/// migration; add a new one.
+const MIGRATIONS: &[&str] = &[include_str!("../migrations/0001_init.sql")];
+
+/// Current time as Unix seconds (UTC), the format of every timestamp column.
+pub fn unix_now() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() as i64)
+}
 
 #[derive(Clone)]
 pub struct Db {
@@ -174,6 +182,29 @@ mod tests {
         conn.pragma_update(None, "user_version", 3).unwrap();
         let err = migrate(&mut conn, &[CREATE_A]).unwrap_err();
         assert!(err.contains("newer"), "{err}");
+    }
+
+    #[test]
+    fn deleting_user_deletes_their_sessions() {
+        let db = Db::open_in_memory();
+        let conn = db.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO users (id, google_sub, email, created_at, updated_at) VALUES (1, 'sub', 'a@example.com', 0, 0)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, 1, 0, 0)",
+            [b"hash".as_slice()],
+        )
+        .unwrap();
+
+        conn.execute("DELETE FROM users WHERE id = 1", []).unwrap();
+
+        let sessions: i64 = conn
+            .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(sessions, 0);
     }
 
     #[tokio::test]

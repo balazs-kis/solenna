@@ -1,8 +1,13 @@
 use std::{collections::HashMap, env, fs, path::PathBuf};
 
+/// No `Debug`: it holds the OAuth client secret.
 pub struct Config {
     pub port: u16,
     pub data_dir: PathBuf,
+    /// Public URL without a trailing slash, e.g. `https://solenna.example.com`.
+    pub base_url: String,
+    pub google_client_id: String,
+    pub google_client_secret: String,
 }
 
 impl Config {
@@ -30,7 +35,28 @@ impl Config {
         };
         let data_dir = PathBuf::from(required("SOLENNA_DATA_DIR")?);
 
-        Ok(Self { port, data_dir })
+        let base_url = required("SOLENNA_BASE_URL")?
+            .trim_end_matches('/')
+            .to_string();
+        if !(base_url.starts_with("https://") || base_url.starts_with("http://")) {
+            return Err(format!(
+                "SOLENNA_BASE_URL must start with https:// or http://: {base_url}"
+            ));
+        }
+
+        Ok(Self {
+            port,
+            data_dir,
+            base_url,
+            google_client_id: required("GOOGLE_CLIENT_ID")?,
+            google_client_secret: required("GOOGLE_CLIENT_SECRET")?,
+        })
+    }
+
+    /// Cookies get the `Secure` flag when the app is served over HTTPS. Local
+    /// dev on plain `http://localhost` works without it.
+    pub fn secure_cookies(&self) -> bool {
+        self.base_url.starts_with("https://")
     }
 }
 
@@ -64,6 +90,19 @@ fn parse_line(line: &str) -> Option<(String, String)> {
             .map_or(value, |(i, _)| value[..i].trim_end()),
     };
     Some((key.trim().to_string(), value.to_string()))
+}
+
+#[cfg(test)]
+impl Config {
+    pub fn for_tests() -> Self {
+        Self {
+            port: 0,
+            data_dir: PathBuf::from("."),
+            base_url: "http://localhost:8080".to_string(),
+            google_client_id: "test-client-id".to_string(),
+            google_client_secret: "test-client-secret".to_string(),
+        }
+    }
 }
 
 #[cfg(test)]

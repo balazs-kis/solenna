@@ -9,8 +9,13 @@ use serde_json::json;
 /// `{ "error": "<code>" }` with a matching status code.
 #[derive(Debug)]
 pub enum AppError {
+    /// No valid session.
+    Unauthorized,
     NotFound,
     MethodNotAllowed,
+    /// State-changing request without `Content-Type: application/json`.
+    UnsupportedMediaType,
+    RateLimited,
     /// Something went wrong on our side. Log the details where the error is
     /// created; the client only ever sees `internal`.
     Internal,
@@ -19,8 +24,13 @@ pub enum AppError {
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, code) = match self {
+            AppError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized"),
             AppError::NotFound => (StatusCode::NOT_FOUND, "not_found"),
             AppError::MethodNotAllowed => (StatusCode::METHOD_NOT_ALLOWED, "method_not_allowed"),
+            AppError::UnsupportedMediaType => {
+                (StatusCode::UNSUPPORTED_MEDIA_TYPE, "unsupported_media_type")
+            }
+            AppError::RateLimited => (StatusCode::TOO_MANY_REQUESTS, "rate_limited"),
             AppError::Internal => (StatusCode::INTERNAL_SERVER_ERROR, "internal"),
         };
         (status, Json(json!({ "error": code }))).into_response()

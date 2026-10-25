@@ -2,8 +2,9 @@
 # Alpine's Rust targets musl and links statically by default.
 
 FROM rust:1.99-alpine AS chef
-# musl-dev: C toolchain bits for crates that compile C code (e.g. bundled SQLite).
-RUN apk add --no-cache musl-dev
+# musl-dev: C toolchain bits for crates that compile C code (bundled SQLite, aws-lc).
+# ca-certificates: the CA bundle copied into the final image for TLS to Google.
+RUN apk add --no-cache musl-dev ca-certificates
 RUN cargo install cargo-chef --locked --version 0.1.78
 WORKDIR /app
 
@@ -23,6 +24,7 @@ RUN mkdir /data
 
 FROM scratch
 COPY --from=builder /app/target/release/solenna /solenna
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder --chown=10001:10001 /data /data
 USER 10001:10001
 ENV SOLENNA_PORT=8080 \
