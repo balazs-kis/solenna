@@ -2,7 +2,7 @@ mod config;
 mod error;
 mod web;
 
-use std::net::SocketAddr;
+use std::{io::IsTerminal, net::SocketAddr};
 
 use axum::{
     Json, Router,
@@ -17,7 +17,11 @@ use crate::error::AppError;
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt().with_target(false).init();
+    tracing_subscriber::fmt()
+        .with_target(false)
+        // No color codes when output goes to `docker logs` or a file.
+        .with_ansi(std::io::stdout().is_terminal())
+        .init();
 
     let config = config::Config::from_env().unwrap_or_else(|e| {
         eprintln!("config error: {e}");

@@ -1,0 +1,2 @@
+# Always LF in the repo and working tree, regardless of OS or editor settings.
+* text=auto eol=lf

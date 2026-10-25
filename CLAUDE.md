@@ -63,7 +63,7 @@ compose.yaml
 - **SQL lives inline** in the Rust functions that use it, as plain string literals. Use `?` parameters every time. Never build SQL with `format!`.
 - **Every query that touches user data must filter by `user_id`.** User IDs come from the authenticated session, never from the request body or URL. This is the single most important rule in the codebase.
 - **Migrations:** numbered `.sql` files in `server/migrations/`, embedded with `include_str!`, applied in order on startup and tracked with `PRAGMA user_version`. Never edit a migration that has been committed. Add a new one.
-- **SQLite settings on every connection:** `journal_mode=WAL`, `foreign_keys=ON`, `busy_timeout=5000`.
+- **SQLite settings on every connection:** `journal_mode=WAL`, `foreign_keys=ON`, `busy_timeout=5000`, `temp_store=MEMORY` (the `scratch` image has no writable `/tmp` for SQLite temp files).
 - **Data types:**
   - Weight is stored as `INTEGER` grams (`weight_g`). The UI shows kg with one decimal place.
   - Calendar days (weigh-ins, period days) are `TEXT` in `YYYY-MM-DD` format and represent the user's local date. Do not convert them to UTC.
@@ -123,7 +123,7 @@ All configuration comes from environment variables set in `compose.yaml` / `.env
 
 - **Dev:** `cargo run` serves `web/` from disk, so frontend edits need only a browser refresh.
 - **Release:** `web/` is embedded into the binary with `rust-embed`.
-- **Dockerfile:** multi-stage, using `cargo-chef` for dependency caching. It builds a static `x86_64-unknown-linux-musl` binary and runs it on `scratch` (or distroless static) as a non-root user. TLS uses rustls with bundled roots, so no system CA certificates are needed.
+- **Dockerfile:** multi-stage, using `cargo-chef` for dependency caching. It builds on `rust:<version>-alpine`, which produces a static musl binary natively for the host architecture, and runs it on `scratch` as uid 10001. TLS uses rustls with bundled roots, so no system CA certificates are needed. Keep the builder image version at or above `rust-version` in `server/Cargo.toml`.
 - The SQLite file lives on a volume mounted at `SOLENNA_DATA_DIR`. It is the only state.
 
 ## Testing
