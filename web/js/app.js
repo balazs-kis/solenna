@@ -60,7 +60,12 @@ function renderNav(state) {
   return h(
     'nav',
     { class: 'nav', 'aria-label': t('nav.label') },
-    h('div', { class: 'nav-brand' }, t('app.name')),
+    h(
+      'div',
+      { class: 'nav-brand' },
+      h('img', { src: '/icons/icon-192.png', alt: '', width: 32, height: 32 }),
+      t('app.name'),
+    ),
     h(
       'ul',
       { class: 'nav-list' },

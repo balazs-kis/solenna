@@ -40,6 +40,7 @@ server/            Rust crate
   migrations/      0001_init.sql, 0002_....sql (embedded with include_str!)
 web/               static frontend, served as-is
   index.html
+  favicon.ico      generated (see design/)
   manifest.webmanifest
   sw.js
   css/
@@ -54,7 +55,8 @@ web/               static frontend, served as-is
   i18n/
     en.json
     hu.json
-  icons/           SVG icons (UI icons are used as CSS masks)
+  icons/           UI icons (SVG, used as CSS masks) + generated app icons (PNG)
+design/            not served: app icon sources (see "App icons" below)
 Dockerfile
 compose.yaml
 .env.example       placeholder values only
@@ -112,6 +114,16 @@ This app stores health data. Treat it accordingly.
 - **i18n:** English and Hungarian. Every user-visible string goes through `t('key')`. No hardcoded UI text. The one exception is the bilingual `<noscript>` text in `index.html`, since `t()` can't run there. Dictionaries are flat key → string JSON objects in `web/i18n/en.json` and `hu.json`, imported as JSON modules. Keys are always written out as complete single-quoted literals (`t('nav.weight')`, or `label: 'nav.weight'` passed to `t()` later), never built dynamically (`` t(`nav.${x}`) ``). `cargo test` treats every single-quoted `section.name`-shaped literal in `web/js` as a key. It checks that both files have the same keys and placeholders, that every key used exists, and that every defined key is used. Other string literals must not look like keys (use `solenna-lang`, not `solenna.lang`). The extraction is a simple heuristic: it pairs up `'` characters per line. So an apostrophe earlier on the same line (`"don't"` in a double-quoted string, or a template literal) can make it miss the keys after it. If the test reports a key as unused that clearly is used, look for a stray apostrophe on that line and move the key to its own line. Interpolation uses `{name}` placeholders: `t('key', { name })`. Language comes from the user setting, falling back to `navigator.language`, then English. Format dates and numbers with `Intl`, using the active locale.
 - **CSS:** modern plain CSS (custom properties, nesting, grid, container queries). Design mobile-first. Desktop gets a wider layout through media/container queries, not a separate UI. Theme colors are defined as custom properties on `:root`, and dark mode is supported via `prefers-color-scheme`.
 - **Accessibility:** semantic HTML, real `<button>`s and `<label>`s, visible focus styles, and touch targets of at least 44px.
+
+### App icons
+Generated from the two sources in `design/`. Never edit the generated files by hand. Regenerate them from the sources with any image tool:
+
+| Source | Generated |
+|---|---|
+| `icon-transparent.png` (rounded tile, transparent corners) | `web/favicon.ico` (16/32/48), `web/icons/icon-192.png`, `web/icons/icon-512.png` |
+| `icon-filled.png` (opaque, full bleed; the platform applies its own mask) | `web/icons/apple-touch-icon.png` (180), `web/icons/icon-maskable-512.png` |
+
+The transparent source has near-invisible stray pixels (alpha < 8) around the tile. Zero them before downscaling, or they turn into a faint dark fringe.
 
 ### PWA / offline
 - Offline support covers the **app shell only**. The app opens offline and shows the last data it fetched, but saving requires a connection. Show a clear offline state and disable save buttons while offline.

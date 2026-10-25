@@ -14,6 +14,8 @@ export function render(container, state) {
     h(
       'div',
       { class: 'card login-card' },
+      // Decorative: the heading right below names the app.
+      h('img', { class: 'login-logo', src: '/icons/icon-192.png', alt: '', width: 96, height: 96 }),
       h('h1', { tabindex: '-1' }, t('app.name')),
       h('p', { class: 'muted' }, t('login.tagline')),
       state.authError &&
