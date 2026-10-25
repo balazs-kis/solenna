@@ -119,6 +119,8 @@ All configuration comes from environment variables set in `compose.yaml` / `.env
 
 `.env` is gitignored. `.env.example` is committed with placeholder values only. The app fails fast on startup if a required variable is missing.
 
+For local dev, the app also reads `./.env` from the working directory, so `cargo run` from the repo root just works. Real environment variables take precedence. The parser follows compose's env-file rules for comments, quotes and `export`, so both read the file the same way.
+
 ## Build and deploy
 
 - **Dev:** `cargo run` serves `web/` from disk, so frontend edits need only a browser refresh.
