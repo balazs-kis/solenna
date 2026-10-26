@@ -1,7 +1,7 @@
 import { api } from '../api.js';
 import { h } from '../dom.js';
 import { saveLanguage, t } from '../i18n.js';
-import { setState } from '../store.js';
+import { SIGNED_OUT, setState } from '../store.js';
 
 export const title = 'settings.title';
 
@@ -54,7 +54,7 @@ function changeLanguage(lang) {
 async function logout() {
   try {
     await api('POST', '/auth/logout');
-    setState({ user: null, logoutFailed: false });
+    setState({ ...SIGNED_OUT, logoutFailed: false });
   } catch {
     setState({ logoutFailed: true });
   }

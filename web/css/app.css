@@ -11,6 +11,7 @@
   --accent-soft: #f9e6ed;
   --on-accent: #ffffff;
   --error: #b42318;
+  --on-error: #ffffff;
 
   --radius: 12px;
   --nav-height: 64px;
@@ -28,6 +29,7 @@
     --accent-soft: #3a2430;
     --on-accent: #1f1a1d;
     --error: #ff8a80;
+    --on-error: #1f1a1d;
   }
 }
 
@@ -216,7 +218,9 @@ a {
     font-weight: 600;
   }
 
+  & input,
   & select {
+    width: 100%;
     min-height: 44px;
     padding: 0 0.75rem;
     color: var(--text);
@@ -224,6 +228,10 @@ a {
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 8px;
+  }
+
+  & input[readonly] {
+    color: var(--text-muted);
   }
 }
 
@@ -267,6 +275,28 @@ h2 {
     background: transparent;
     border-color: var(--border);
   }
+
+  &.danger {
+    color: var(--on-error);
+    background: var(--error);
+    border-color: var(--error);
+  }
+
+  /* Less padding, same 44px touch height. */
+  &.small {
+    padding: 0 0.75rem;
+  }
+}
+
+/* Text-style button for low-emphasis row actions. */
+.link-button {
+  min-height: 44px;
+  padding: 0 0.5rem;
+  color: var(--accent);
+  font: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
 }
 
 /* Signed-out screens: one centered card, no nav. */
@@ -292,4 +322,161 @@ h2 {
 
 .login-logo {
   justify-self: center;
+}
+
+/* Forms */
+.form-row {
+  display: grid;
+  gap: 1rem;
+
+  @media (min-width: 480px) {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+/* Weight summary */
+.summary {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.summary-value {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+/* Segmented control (range switcher) */
+.segmented {
+  display: flex;
+  padding: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+
+  & button {
+    flex: 1;
+    min-height: 40px;
+    color: var(--text-muted);
+    font: inherit;
+    font-size: 0.875rem;
+    background: none;
+    border: none;
+    border-radius: 7px;
+    cursor: pointer;
+
+    &[aria-pressed="true"] {
+      color: var(--text);
+      font-weight: 600;
+      background: var(--surface);
+      box-shadow: 0 1px 2px rgb(0 0 0 / 0.15);
+    }
+  }
+}
+
+/* Chart: SVG lines stretched to the plot; labels and dots are HTML on top. */
+.chart {
+  margin: 0;
+}
+
+.chart-plot {
+  position: relative;
+  height: 200px;
+  margin: 0.5rem 0 0 3.25rem;
+
+  & svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+}
+
+.chart-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.chart-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.chart-tick {
+  position: absolute;
+  right: 100%;
+  padding-right: 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+  transform: translateY(-50%);
+}
+
+.chart-dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: var(--accent);
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-sizing: content-box;
+}
+
+.chart-axis {
+  display: flex;
+  justify-content: space-between;
+  margin: 0.5rem 0 0 3.25rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+/* History list */
+.entry-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.entry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 1rem;
+  padding: 0.25rem 0;
+  border-top: 1px solid var(--border);
+
+  &:first-child {
+    border-top: none;
+  }
+}
+
+.entry-date {
+  flex: 1;
+  min-width: 7rem;
+  color: var(--text-muted);
+}
+
+.entry-value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.entry-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: auto;
 }

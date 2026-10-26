@@ -16,7 +16,10 @@ use crate::error::AppError;
 /// Applied in order. The DB's `PRAGMA user_version` is the number already applied.
 /// Migrations land together with the code that uses them. Never edit a committed
 /// migration; add a new one.
-const MIGRATIONS: &[&str] = &[include_str!("../migrations/0001_init.sql")];
+const MIGRATIONS: &[&str] = &[
+    include_str!("../migrations/0001_init.sql"),
+    include_str!("../migrations/0002_weights.sql"),
+];
 
 /// Current time as Unix seconds (UTC), the format of every timestamp column.
 pub fn unix_now() -> i64 {

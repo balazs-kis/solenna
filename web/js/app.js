@@ -23,6 +23,7 @@ const navItems = [
 
 const root = document.getElementById('app');
 let renderedPath = null;
+let loadedView = null;
 
 /**
  * `state.user` is undefined while loading, null when signed out, and the
@@ -37,6 +38,7 @@ function render(state) {
   }
 
   const signedIn = state.user !== null;
+  if (!signedIn) loadedView = null;
   const view = signedIn ? (routes[state.path] ?? notFound) : login;
   document.title = `${t(view.title)} · ${t('app.name')}`;
 
@@ -54,6 +56,13 @@ function render(state) {
     document.getElementById(focusedId)?.focus();
   }
   renderedPath = state.path;
+
+  // A view's optional load() fetches its data each time the view becomes
+  // active. Last, because it calls setState, which renders again.
+  if (signedIn && view !== loadedView) {
+    loadedView = view;
+    view.load?.();
+  }
 }
 
 function renderNav(state) {

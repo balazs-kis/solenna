@@ -13,7 +13,7 @@ use axum::{
     http::{HeaderValue, Method, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::{any, get},
+    routing::{any, get, put},
 };
 use serde_json::{Value, json};
 
@@ -81,6 +81,11 @@ fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/health", get(health))
         .route("/api/me", get(api::me::get))
+        .route("/api/weights", get(api::weights::list))
+        .route(
+            "/api/weights/{day}",
+            put(api::weights::put).delete(api::weights::delete),
+        )
         // `{*rest}` doesn't match an empty path, so `/api` and `/api/` need their own routes.
         .route("/api", any(api_not_found))
         .route("/api/", any(api_not_found))

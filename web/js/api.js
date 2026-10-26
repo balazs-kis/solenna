@@ -1,4 +1,4 @@
-import { setState } from './store.js';
+import { SIGNED_OUT, setState } from './store.js';
 
 export class ApiError extends Error {
   constructor(status, code) {
@@ -22,7 +22,7 @@ export async function api(method, path, body) {
   }
 
   const response = await fetch(path, options);
-  if (response.status === 401) setState({ user: null });
+  if (response.status === 401) setState(SIGNED_OUT);
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     throw new ApiError(response.status, data.error ?? 'unknown');

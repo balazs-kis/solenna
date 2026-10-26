@@ -5,6 +5,13 @@
 let state = {};
 const listeners = new Set();
 
+/**
+ * State after signing out: the user and everything loaded for them is
+ * dropped, so the next person on this device starts clean. Add each new kind
+ * of user data here.
+ */
+export const SIGNED_OUT = { user: null, weights: undefined, weightUi: undefined };
+
 export function getState() {
   return state;
 }

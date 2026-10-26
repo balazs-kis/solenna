@@ -428,6 +428,26 @@ fn read_cookie(headers: &HeaderMap, name: &str) -> Option<String> {
         .map(|(_, value)| value.to_string())
 }
 
+/// Signs a user in directly (skipping Google) and returns a `Cookie` header
+/// value for their session. For tests of any route that needs a session.
+#[cfg(test)]
+pub async fn test_session(state: &AppState, sub: &'static str, email: &'static str) -> String {
+    let claims = IdClaims {
+        iss: "https://accounts.google.com".into(),
+        aud: state.config.google_client_id.clone(),
+        exp: i64::MAX,
+        sub: sub.into(),
+        email: email.into(),
+        name: String::new(),
+    };
+    let token = state
+        .db
+        .call(move |conn| login_user(conn, &claims, unix_now(), None))
+        .await
+        .unwrap();
+    format!("{SESSION_COOKIE}={token}")
+}
+
 #[cfg(test)]
 mod tests {
     use axum::{
@@ -487,14 +507,8 @@ mod tests {
         response.headers()[header::LOCATION].to_str().unwrap()
     }
 
-    /// Logs a user in directly (skipping Google) and returns their session cookie.
     async fn session_for(state: &AppState, sub: &'static str, email: &'static str) -> String {
-        let token = state
-            .db
-            .call(move |conn| login_user(conn, &claims(sub, email), unix_now(), None))
-            .await
-            .unwrap();
-        format!("{SESSION_COOKIE}={token}")
+        test_session(state, sub, email).await
     }
 
     async fn session_count(state: &AppState) -> i64 {

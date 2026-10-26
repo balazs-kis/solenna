@@ -9,6 +9,8 @@ use serde_json::json;
 /// `{ "error": "<code>" }` with a matching status code.
 #[derive(Debug)]
 pub enum AppError {
+    /// Invalid input; the code tells the client what (e.g. `invalid_day`).
+    BadRequest(&'static str),
     /// No valid session.
     Unauthorized,
     NotFound,
@@ -24,6 +26,7 @@ pub enum AppError {
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, code) = match self {
+            AppError::BadRequest(code) => (StatusCode::BAD_REQUEST, code),
             AppError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized"),
             AppError::NotFound => (StatusCode::NOT_FOUND, "not_found"),
             AppError::MethodNotAllowed => (StatusCode::METHOD_NOT_ALLOWED, "method_not_allowed"),
