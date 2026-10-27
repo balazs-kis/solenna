@@ -19,6 +19,7 @@ use crate::error::AppError;
 const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0001_init.sql"),
     include_str!("../migrations/0002_weights.sql"),
+    include_str!("../migrations/0003_periods.sql"),
 ];
 
 /// Current time as Unix seconds (UTC), the format of every timestamp column.

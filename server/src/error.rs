@@ -14,6 +14,8 @@ pub enum AppError {
     /// No valid session.
     Unauthorized,
     NotFound,
+    /// The request clashes with existing data (e.g. `overlapping_period`).
+    Conflict(&'static str),
     MethodNotAllowed,
     /// State-changing request without `Content-Type: application/json`.
     UnsupportedMediaType,
@@ -29,6 +31,7 @@ impl IntoResponse for AppError {
             AppError::BadRequest(code) => (StatusCode::BAD_REQUEST, code),
             AppError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized"),
             AppError::NotFound => (StatusCode::NOT_FOUND, "not_found"),
+            AppError::Conflict(code) => (StatusCode::CONFLICT, code),
             AppError::MethodNotAllowed => (StatusCode::METHOD_NOT_ALLOWED, "method_not_allowed"),
             AppError::UnsupportedMediaType => {
                 (StatusCode::UNSUPPORTED_MEDIA_TYPE, "unsupported_media_type")

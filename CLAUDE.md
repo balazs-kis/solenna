@@ -49,7 +49,8 @@ web/               static frontend, served as-is
     router.js      HOME, navigate(), link interception
     api.js         fetch wrapper
     dom.js         h() / svg() element helpers
-    format.js      calendar-day math, Intl date and kg formatting
+    format.js      calendar-day math, Intl date / day-count / kg formatting
+    cycle-math.js  cycle predictions (pure functions, no DOM)
     store.js       state + subscribe
     i18n.js        t() + language selection
     views/         one module per screen
@@ -117,6 +118,21 @@ This app stores health data. Treat it accordingly.
 - **i18n:** English and Hungarian. Every user-visible string goes through `t('key')`. No hardcoded UI text. The one exception is the bilingual `<noscript>` text in `index.html`, since `t()` can't run there. Dictionaries are flat key → string JSON objects in `web/i18n/en.json` and `hu.json`, imported as JSON modules. Keys are always written out as complete single-quoted literals (`t('nav.weight')`, or `label: 'nav.weight'` passed to `t()` later), never built dynamically (`` t(`nav.${x}`) ``). `cargo test` treats every single-quoted `section.name`-shaped literal in `web/js` as a key. It checks that both files have the same keys and placeholders, that every key used exists, and that every defined key is used. Other string literals must not look like keys (use `solenna-lang`, not `solenna.lang`). The extraction is a simple heuristic: it pairs up `'` characters per line. So an apostrophe earlier on the same line (`"don't"` in a double-quoted string, or a template literal) can make it miss the keys after it. If the test reports a key as unused that clearly is used, look for a stray apostrophe on that line and move the key to its own line. Interpolation uses `{name}` placeholders: `t('key', { name })`. Language comes from the user setting, falling back to `navigator.language`, then English. Format dates and numbers with `Intl`, using the active locale.
 - **CSS:** modern plain CSS (custom properties, nesting, grid, container queries). Design mobile-first. Desktop gets a wider layout through media/container queries, not a separate UI. Theme colors are defined as custom properties on `:root`, and dark mode is supported via `prefers-color-scheme`.
 - **Accessibility:** semantic HTML, real `<button>`s and `<label>`s, visible focus styles, and touch targets of at least 44px.
+- **Plurals:** don't write `{count} days` into translations. Format counts with `Intl` instead: `formatDays()` gives "1 day" / "5 days" / "5 nap", and `formatRelativeDay()` gives "tomorrow" / "in 9 days".
+
+### Cycle tracking
+- **Data:** periods (`start_day`, `end_day` or `null` while ongoing) with a flow level (1 spotting … 5 very heavy) per bleeding day. The API saves a period as a whole (`POST` / `PUT` replace its days and flow). Periods never overlap, an ongoing one counts as open-ended (so it is always the latest), a period is at most 15 days, and an ongoing period can't have started more than 15 days before the server's date (`stale_ongoing`; that's 14 days plus a day of time-zone slack). The server enforces all of this.
+- **Logging a start in the past** gives the period an assumed end: the average period length, but never into the next logged period. It stays ongoing only if it could plausibly still be running, so backfilling history works in any order.
+- **Predictions are computed in the browser** by `cycle-math.js`, using the calendar method:
+  - **Cycle day 1** is the first day of real flow. Leading spotting days belong to the previous cycle, although the calendar still shows them.
+  - **Lengths:** cycle and period lengths are averages of the last 6 cycles, ignoring gaps outside 15–60 days as missed logs. They fall back to 28 / 5 days.
+  - **Ovulation** is 15 days before the next period start (a 14-day luteal phase, so cycle day 14 of 28). The fertile window is the 5 days before ovulation plus ovulation day.
+- **Never invent an estimate where the method has nothing to say:**
+  - **Short cycles:** a cycle under 21 days, or one where ovulation would fall on or before the period's end, gets no ovulation or fertile window. The screen explains why.
+  - **Overdue period:** the current cycle's phase, ovulation and fertility become unknown, and nothing further is predicted. The estimate has just been shown wrong; ovulation most likely came later.
+  - **"Late":** the period is only called late after max(5 days, the user's observed cycle spread). Before that, it's "expected N days ago" with a note that a few days of variation is normal.
+- **Days up to today always belong to the current logged cycle.** A predicted period only starts a new cycle once it is logged.
+- **Always present predictions as estimates.** The disclaimer stays on the screen, and nothing may suggest the app works as contraception.
 
 ### App icons
 Generated from the two sources in `design/`. Never edit the generated files by hand. Regenerate them from the sources with any image tool:

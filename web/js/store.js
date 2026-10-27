@@ -10,7 +10,13 @@ const listeners = new Set();
  * dropped, so the next person on this device starts clean. Add each new kind
  * of user data here.
  */
-export const SIGNED_OUT = { user: null, weights: undefined, weightUi: undefined };
+export const SIGNED_OUT = {
+  user: null,
+  weights: undefined,
+  weightUi: undefined,
+  periods: undefined,
+  cycleUi: undefined,
+};
 
 export function getState() {
   return state;

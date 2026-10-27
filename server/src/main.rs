@@ -81,6 +81,14 @@ fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/health", get(health))
         .route("/api/me", get(api::me::get))
+        .route(
+            "/api/periods",
+            get(api::periods::list).post(api::periods::create),
+        )
+        .route(
+            "/api/periods/{id}",
+            put(api::periods::update).delete(api::periods::delete),
+        )
         .route("/api/weights", get(api::weights::list))
         .route(
             "/api/weights/{day}",

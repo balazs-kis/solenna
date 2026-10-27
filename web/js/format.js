@@ -34,6 +34,23 @@ export function formatDay(day) {
     .format(new Date(year, month - 1, date));
 }
 
+/** e.g. "Tuesday, October 27" / "október 27., kedd" */
+export function formatDayLong(day) {
+  const [year, month, date] = day.split('-').map(Number);
+  return new Intl.DateTimeFormat(locale(), { weekday: 'long', month: 'long', day: 'numeric' })
+    .format(new Date(year, month - 1, date));
+}
+
+/** `day` relative to `today`: "today", "tomorrow", "in 9 days", "3 days ago" (localized). */
+export function formatRelativeDay(day, today) {
+  return new Intl.RelativeTimeFormat(locale(), { numeric: 'auto' }).format(daysBetween(today, day), 'day');
+}
+
+/** A number of days with the right plural: "1 day", "5 days", "5 nap". */
+export function formatDays(count) {
+  return new Intl.NumberFormat(locale(), { style: 'unit', unit: 'day', unitDisplay: 'long' }).format(count);
+}
+
 /** Grams as kilograms with one decimal ("72.4" / "72,4"). `signed` adds +/−. */
 export function formatKg(grams, { signed = false } = {}) {
   return new Intl.NumberFormat(locale(), {
