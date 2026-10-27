@@ -127,6 +127,12 @@ This app stores health data. Treat it accordingly.
   - **Cycle day 1** is the first day of real flow. Leading spotting days belong to the previous cycle, although the calendar still shows them.
   - **Lengths:** cycle and period lengths are averages of the last 6 cycles, ignoring gaps outside 15–60 days as missed logs. They fall back to 28 / 5 days.
   - **Ovulation** is 15 days before the next period start (a 14-day luteal phase, so cycle day 14 of 28). The fertile window is the 5 days before ovulation plus ovulation day.
+  - **Fertility levels** follow Wilcox et al. (1995) conception probabilities, in **two levels only**: *fertile* 5–3 days before the estimated ovulation, *high* from 2 days before through ovulation day, none otherwise. Don't add a "peak day" or finer per-day levels: the ovulation date is a calendar estimate that is often off by days, so that would claim false precision.
+  - **Fertility is independent of the phase.** In short cycles the fertile window can overlap bleeding days, and those days show it too.
+- **The calendar has two separate layers. Keep them apart:**
+  - **Background colour = phase**, one per day: logged bleeding (shaded by flow strength), predicted bleeding (dashed), follicular, ovulation, luteal.
+  - **Fertility = a small marker on top:** one sprout (fertile), two sprouts (high), on any background, bleeding days included.
+  - The legend has one group per layer. Don't add fertility as a background colour.
 - **Never invent an estimate where the method has nothing to say:**
   - **Short cycles:** a cycle under 21 days, or one where ovulation would fall on or before the period's end, gets no ovulation or fertile window. The screen explains why.
   - **Overdue period:** the current cycle's phase, ovulation and fertility become unknown, and nothing further is predicted. The estimate has just been shown wrong; ovulation most likely came later.

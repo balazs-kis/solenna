@@ -580,6 +580,12 @@ h3 {
   gap: 4px;
 }
 
+/* Day contents scale with the grid width (cqi = 1% of it), so markers stay in
+   proportion from phone to desktop. */
+.calendar-grid {
+  container-type: inline-size;
+}
+
 .calendar-weekdays {
   margin-top: 0.5rem;
   color: var(--text-muted);
@@ -588,6 +594,9 @@ h3 {
 }
 
 .calendar-day {
+  /* About a fifth of a day's width: 11px on phones, up to 20px on desktop. */
+  --marker-size: clamp(11px, 3cqi, 20px);
+
   position: relative;
   display: grid;
   place-items: center;
@@ -606,16 +615,26 @@ h3 {
     color: var(--text-muted);
   }
 
-  /* Order matters: later rules win where a day has several states. */
-  &.is-fertile {
+  /* Background = phase. Each day has exactly one of these classes. */
+  &.phase-menstrual {
     color: var(--text);
-    background: var(--fertile-soft);
+    background: var(--period-soft);
   }
 
-  &.is-ovulation {
+  &.phase-follicular {
+    color: var(--text);
+    background: var(--follicular-soft);
+  }
+
+  &.phase-ovulation {
     color: var(--on-fertile);
     font-weight: 700;
     background: var(--fertile);
+  }
+
+  &.phase-luteal {
+    color: var(--text);
+    background: var(--luteal-soft);
   }
 
   &.is-predicted-period {
@@ -647,31 +666,75 @@ h3 {
   }
 }
 
-/* Ovulation day: a small ring under the date. */
+/* Fertility marker: one sprout (fertile) or two (high fertility),
+   on its own layer above the phase colour. */
 .calendar-marker {
-  position: absolute;
-  bottom: 4px;
-  width: 6px;
-  height: 6px;
-  border: 1.5px solid currentColor;
-  border-radius: 50%;
+  display: flex;
+  gap: 1px;
+  color: var(--fertile);
+
+  & .icon {
+    width: 11px;
+    height: 11px;
+  }
+
+  .calendar-day & {
+    position: absolute;
+    bottom: calc(var(--marker-size) / 4);
+    gap: calc(var(--marker-size) / 8);
+  }
+
+  .calendar-day & .icon {
+    width: var(--marker-size);
+    height: var(--marker-size);
+  }
+
+  /* On the ovulation day's solid background. */
+  .phase-ovulation & {
+    color: var(--on-fertile);
+  }
+
+  /* On bleeding days (short cycles), a thin outline keeps the teal readable on rose. */
+  .is-period & {
+    filter: drop-shadow(0 0 1px var(--surface)) drop-shadow(0 0 1px var(--surface));
+  }
+}
+
+/* Make room for the marker below the date. */
+.calendar-day.has-marker .calendar-date {
+  margin-bottom: calc(var(--marker-size) * 0.8);
 }
 
 .legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 1rem;
-  margin: 0;
-  padding: 0;
+  display: grid;
+  gap: 0.5rem;
   color: var(--text-muted);
   font-size: 0.8125rem;
-  list-style: none;
+
+  & ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem 1rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
 
   & li {
     display: flex;
     align-items: center;
     gap: 0.375rem;
   }
+}
+
+.legend-group {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.legend-title {
+  color: var(--text);
+  font-weight: 600;
 }
 
 .legend-swatch {
@@ -682,8 +745,9 @@ h3 {
 
   &.is-period { background: var(--period); }
   &.is-predicted-period { background: var(--period-soft); border: 2px dashed var(--period); }
-  &.is-fertile { background: var(--fertile-soft); }
-  &.is-ovulation { background: var(--fertile); }
+  &.phase-follicular { background: var(--follicular-soft); }
+  &.phase-ovulation { background: var(--fertile); }
+  &.phase-luteal { background: var(--luteal-soft); }
 }
 
 /* Selected day */

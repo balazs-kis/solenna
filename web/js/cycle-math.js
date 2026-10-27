@@ -209,9 +209,25 @@ function cycle(start, nextStart, periodEnd, predicted) {
 }
 
 /**
+ * Fertility level by days before the estimated ovulation, after the
+ * conception-probability data of Wilcox et al. (1995): roughly 10-16% for 5 to
+ * 3 days before, 27-33% from 2 days before through ovulation day, near zero
+ * outside. Only two levels on purpose: the ovulation date is a calendar
+ * estimate that is often off by days, so finer per-day levels (or a "peak day")
+ * would claim a precision the method doesn't have.
+ */
+function fertilityLevel(daysBeforeOvulation) {
+  if (daysBeforeOvulation >= 0 && daysBeforeOvulation <= 2) return 'high';
+  if (daysBeforeOvulation >= 3 && daysBeforeOvulation <= FERTILE_DAYS_BEFORE_OVULATION) return 'medium';
+  return null;
+}
+
+/**
  * `period` is 'logged', 'predicted' or null. `phase` is null where it can't be
- * estimated. Phases and fertility only cover the last logged cycle onwards;
- * earlier days show logged data only.
+ * estimated. `fertility` is 'medium', 'high' or null, independent of the phase:
+ * in short cycles the fertile window can overlap bleeding days.
+ * Phases and fertility only cover the last logged cycle onwards; earlier days
+ * show logged data only.
  *
  * Days up to today belong to the current (logged) cycle even when a period was
  * predicted for them: until bleeding is actually logged, a new cycle hasn't
@@ -225,8 +241,7 @@ function dayInfo(day, periods, cycles, flowByDay, today) {
     isFuture: day > today,
     period: logged ? 'logged' : null,
     flow: logged ? (flowByDay.get(day) ?? null) : null,
-    fertile: false,
-    ovulation: false,
+    fertility: null,
     phase: null,
     cycleDay: null,
   };
@@ -243,11 +258,12 @@ function dayInfo(day, periods, cycles, flowByDay, today) {
   if (!owner) return info;
 
   info.cycleDay = daysBetween(owner.start, day) + 1;
+  if (owner.ovulation !== null) {
+    info.fertility = fertilityLevel(daysBetween(day, owner.ovulation));
+  }
   if (day <= owner.periodEnd) {
     info.phase = 'menstrual';
   } else if (owner.ovulation !== null) {
-    info.fertile = day >= owner.fertileStart && day <= owner.fertileEnd;
-    info.ovulation = day === owner.ovulation;
     if (day < owner.ovulation) info.phase = 'follicular';
     else if (day === owner.ovulation) info.phase = 'ovulation';
     else info.phase = 'luteal';

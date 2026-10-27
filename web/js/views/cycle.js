@@ -4,7 +4,7 @@ import { h } from '../dom.js';
 import { daysBetween, formatDay, formatDayLong, formatDays, formatRelativeDay, todayIso } from '../format.js';
 import { t } from '../i18n.js';
 import { getState, setState } from '../store.js';
-import { flowLabels, renderCalendar } from './cycle-calendar.js';
+import { fertilityLabels, fertilityMarker, flowLabels, renderCalendar } from './cycle-calendar.js';
 
 export const title = 'cycle.title';
 
@@ -125,16 +125,34 @@ function renderQuickAction(analysis) {
   );
 }
 
+/** Two groups, matching the calendar's two layers: phase colours and fertility markers. */
 function renderLegend() {
-  const item = (swatch, label) =>
-    h('li', {}, h('span', { class: `legend-swatch ${swatch}`, 'aria-hidden': 'true' }), t(label));
+  const swatch = (className, label) =>
+    h('li', {}, h('span', { class: `legend-swatch ${className}`, 'aria-hidden': 'true' }), t(label));
+  const marker = (level) => h('li', {}, fertilityMarker(level), t(fertilityLabels[level]));
   return h(
-    'ul',
+    'div',
     { class: 'legend' },
-    item('is-period', 'cycle.legendPeriod'),
-    item('is-predicted-period', 'cycle.legendPredicted'),
-    item('is-fertile', 'cycle.legendFertile'),
-    item('is-ovulation', 'cycle.legendOvulation'),
+    h(
+      'div',
+      { class: 'legend-group' },
+      h('span', { class: 'legend-title' }, t('cycle.legendPhases')),
+      h(
+        'ul',
+        {},
+        swatch('is-period', 'cycle.legendPeriod'),
+        swatch('is-predicted-period', 'cycle.legendPredicted'),
+        swatch('phase-follicular', 'cycle.phaseFollicular'),
+        swatch('phase-ovulation', 'cycle.phaseOvulation'),
+        swatch('phase-luteal', 'cycle.phaseLuteal'),
+      ),
+    ),
+    h(
+      'div',
+      { class: 'legend-group' },
+      h('span', { class: 'legend-title' }, t('cycle.legendFertility')),
+      h('ul', {}, marker('medium'), marker('high')),
+    ),
   );
 }
 
@@ -145,8 +163,7 @@ function renderDayPanel(day, analysis, view) {
   const status = [];
   if (info.period === 'logged') status.push(t('cycle.legendPeriod'));
   if (info.period === 'predicted') status.push(t('cycle.legendPredicted'));
-  if (info.ovulation) status.push(t('cycle.legendOvulation'));
-  else if (info.fertile) status.push(t('cycle.legendFertile'));
+  if (info.fertility) status.push(t(fertilityLabels[info.fertility]));
   if (info.phase) status.push(t('cycle.cycleDayPhase', { day: info.cycleDay, phase: t(phases[info.phase].name) }));
   else if (info.cycleDay) status.push(t('cycle.cycleDay', { day: info.cycleDay }));
 

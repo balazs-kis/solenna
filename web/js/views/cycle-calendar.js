@@ -5,6 +5,26 @@ import { locale, t } from '../i18n.js';
 /** Bleeding strength 1..5 as i18n keys (literal, so the translation test sees them). */
 export const flowLabels = ['cycle.flow1', 'cycle.flow2', 'cycle.flow3', 'cycle.flow4', 'cycle.flow5'];
 
+/** Fertility levels from `dayInfo().fertility`, as i18n keys. */
+export const fertilityLabels = {
+  medium: 'cycle.fertilityMedium',
+  high: 'cycle.fertilityHigh',
+};
+
+/**
+ * The small fertility marker shown on a day: one sprout (fertile) or two
+ * sprouts (high fertility). Also used in the legend.
+ */
+export function fertilityMarker(level) {
+  if (!level) return null;
+  const sprouts = level === 'high' ? 2 : 1;
+  return h(
+    'span',
+    { class: `calendar-marker fertility-${level}`, 'aria-hidden': 'true' },
+    Array.from({ length: sprouts }, () => h('span', { class: 'icon icon-sprout' })),
+  );
+}
+
 /**
  * A month grid (weeks start on Monday) of day buttons. Each day is coloured
  * from `analysis.dayInfo()`; `onSelect(day)` and `onMonth(month)` handle clicks.
@@ -70,13 +90,17 @@ export function renderCalendar({ month, selected, analysis, onSelect, onMonth })
   );
 }
 
+/**
+ * Two separate layers: the background colour is the phase (bleeding shown by
+ * strength, predicted bleeding dashed), and fertility is a small marker on top.
+ */
 function renderDay(info, selected, onSelect) {
   const classes = ['calendar-day'];
   // flow-0: a bleeding day without a logged strength.
   if (info.period === 'logged') classes.push('is-period', `flow-${info.flow ?? 0}`);
-  if (info.period === 'predicted') classes.push('is-predicted-period');
-  if (info.fertile) classes.push('is-fertile');
-  if (info.ovulation) classes.push('is-ovulation');
+  else if (info.period === 'predicted') classes.push('is-predicted-period');
+  else if (info.phase) classes.push(`phase-${info.phase}`);
+  if (info.fertility) classes.push('has-marker');
   if (info.isToday) classes.push('is-today');
   if (info.isFuture) classes.push('is-future');
 
@@ -92,7 +116,7 @@ function renderDay(info, selected, onSelect) {
       onclick: () => onSelect(info.day),
     },
     h('span', { class: 'calendar-date' }, Number(info.day.slice(8))),
-    info.ovulation && h('span', { class: 'calendar-marker', 'aria-hidden': 'true' }),
+    fertilityMarker(info.fertility),
   );
 }
 
@@ -104,8 +128,10 @@ export function describeDay(info) {
     if (info.flow) parts.push(t(flowLabels[info.flow - 1]));
   }
   if (info.period === 'predicted') parts.push(t('cycle.legendPredicted'));
-  if (info.ovulation) parts.push(t('cycle.legendOvulation'));
-  else if (info.fertile) parts.push(t('cycle.legendFertile'));
+  if (info.phase === 'follicular') parts.push(t('cycle.phaseFollicular'));
+  if (info.phase === 'ovulation') parts.push(t('cycle.phaseOvulation'));
+  if (info.phase === 'luteal') parts.push(t('cycle.phaseLuteal'));
+  if (info.fertility) parts.push(t(fertilityLabels[info.fertility]));
   return parts.join(', ');
 }
 
