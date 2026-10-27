@@ -372,6 +372,11 @@ a {
   grid-column: 1 / -1;
 }
 
+.app-version {
+  font-size: 0.875rem;
+  text-align: center;
+}
+
 .danger-zone {
   border-color: color-mix(in srgb, var(--error) 40%, var(--border));
 }

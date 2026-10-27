@@ -137,6 +137,7 @@
   "account.deleteConfirmButton": "Delete everything",
   "account.deleteFailed": "Couldn't delete your account. Please try again.",
   "account.cancel": "Cancel",
+  "account.version": "Solenna {version}",
   "language.en": "English",
   "language.hu": "Magyar",
   "notFound.title": "Page not found",

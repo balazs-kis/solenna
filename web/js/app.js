@@ -1,5 +1,6 @@
 import { api } from './api.js';
 import { h } from './dom.js';
+import { todayIso } from './format.js';
 import { activate, browserLanguage, detectLanguage, saveLanguage, t } from './i18n.js';
 import { startRouter } from './router.js';
 import { readSnapshot, updateSnapshot } from './snapshot.js';
@@ -165,6 +166,17 @@ async function loadUser() {
   }
 }
 
+/**
+ * Screens work out "today" when they render, and an installed app can stay
+ * open for days. Re-render when the date has changed, so "Started today" or
+ * the weight form never use yesterday's date. `state.today` only exists to
+ * notice the change; views keep calling todayIso().
+ */
+function checkDate() {
+  const today = todayIso();
+  if (today !== getState().today) setState({ today });
+}
+
 /** Back online: fetch everything fresh, including the current screen's data. */
 async function reconnect() {
   if (getState().reconnecting) return; // A retry is already running.
@@ -201,6 +213,38 @@ function registerServiceWorker() {
   if (!('serviceWorker' in navigator) || ['localhost', '127.0.0.1'].includes(location.hostname)) return;
   // Without it the app still works online, so a failure needs no handling.
   navigator.serviceWorker.register('/sw.js').catch(() => {});
+
+  // A new version takes control right away (sw.js calls skipWaiting), but this
+  // page keeps running the files it loaded: reload to get the new ones. The
+  // first install also takes control of the page; that's no update.
+  let hadController = Boolean(navigator.serviceWorker.controller);
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController) {
+      hadController = true;
+      return;
+    }
+    updatePending = true;
+    reloadIfUpdated();
+  });
+}
+
+let updatePending = false;
+
+/** Reloads into a new version, but not while the user is typing: then it waits for the next return to the app. */
+function reloadIfUpdated() {
+  if (updatePending && !document.activeElement?.matches('input, textarea, select')) location.reload();
+}
+
+/**
+ * The browser only looks for a new sw.js when a page loads, and returning to
+ * an installed app doesn't load one. One small request; a changed sw.js
+ * installs the new version, which ends in 'controllerchange' above.
+ */
+function checkForUpdate() {
+  navigator.serviceWorker
+    ?.getRegistration()
+    .then((registration) => registration?.update())
+    .catch(() => {}); // Offline or unreachable: the next return tries again.
 }
 
 /** Reads and removes `?auth_error=` (set by the server after a failed sign-in). */
@@ -217,14 +261,22 @@ window.addEventListener('offline', () => setState({ offline: true }));
 window.addEventListener('online', reconnect);
 // Also retry when the app comes back to the foreground: an unreachable server
 // (rather than a lost connection) sends no 'online' event.
+// Returning is also when a new date, or a new version, is noticed.
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && getState().offline) reconnect();
+  if (document.visibilityState !== 'visible') return;
+  reloadIfUpdated();
+  checkForUpdate();
+  checkDate();
+  if (getState().offline) reconnect();
 });
+// For a window that stays visible past midnight (e.g. a desktop tab).
+setInterval(checkDate, 60_000);
 setState({
   path: startRouter(),
   lang: detectLanguage(),
   theme: savedTheme(),
   offline: !navigator.onLine,
+  today: todayIso(),
   authError,
 });
 loadUser();

@@ -154,13 +154,16 @@ async fn security_headers(mut res: Response) -> Response {
     res
 }
 
-/// Also checks that the database answers.
+/// Also checks that the database answers. `version` is the release
+/// (`version` in server/Cargo.toml), shown on the Account screen.
 async fn health(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
     state
         .db
         .call(|conn| Ok(conn.query_row("SELECT 1", [], |_| Ok(()))?))
         .await?;
-    Ok(Json(json!({ "status": "ok" })))
+    Ok(Json(
+        json!({ "status": "ok", "version": env!("CARGO_PKG_VERSION") }),
+    ))
 }
 
 async fn api_not_found() -> AppError {
@@ -232,7 +235,10 @@ mod tests {
     async fn health_reports_ok() {
         let (status, _, body) = send("GET", "/api/health").await;
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(body, json!({ "status": "ok" }));
+        assert_eq!(
+            body,
+            json!({ "status": "ok", "version": env!("CARGO_PKG_VERSION") })
+        );
     }
 
     #[tokio::test]

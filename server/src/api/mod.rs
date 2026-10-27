@@ -39,6 +39,12 @@ pub fn today_number() -> i64 {
     crate::db::unix_now().div_euclid(86_400)
 }
 
+/// A user's local day that can't have started yet anywhere: more than one day
+/// past the server's UTC date (time zones run up to UTC+14).
+pub fn is_future_day(day: &str) -> bool {
+    day_number(day) > today_number() + 1
+}
+
 /// The inverse of `day_number` (Howard Hinnant's `civil_from_days`), for tests
 /// that need days relative to today.
 #[cfg(test)]

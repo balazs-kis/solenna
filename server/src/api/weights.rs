@@ -8,7 +8,13 @@ use axum::{
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
-use crate::{AppState, api::is_valid_day, auth::CurrentUser, db::unix_now, error::AppError};
+use crate::{
+    AppState,
+    api::{is_future_day, is_valid_day},
+    auth::CurrentUser,
+    db::unix_now,
+    error::AppError,
+};
 
 /// Plausible human weights; the table has the same CHECK constraint.
 const MIN_WEIGHT_G: i64 = 20_000;
@@ -59,6 +65,9 @@ pub async fn put(
 ) -> Result<Json<Weight>, AppError> {
     if !is_valid_day(&day) {
         return Err(AppError::BadRequest("invalid_day"));
+    }
+    if is_future_day(&day) {
+        return Err(AppError::BadRequest("future_day"));
     }
     let Json(WeightBody { weight_g }) = body.map_err(|_| AppError::BadRequest("invalid_body"))?;
     if !(MIN_WEIGHT_G..=MAX_WEIGHT_G).contains(&weight_g) {
@@ -113,7 +122,11 @@ mod tests {
     use serde_json::{Value, json};
     use tower::ServiceExt;
 
-    use crate::{auth::test_session, router, test_state};
+    use crate::{
+        api::{day_string, today_number},
+        auth::test_session,
+        router, test_state,
+    };
 
     async fn call(
         app: &Router,
@@ -239,6 +252,25 @@ mod tests {
         }
         let (_, list) = call(&app, "GET", "/api/weights", a, None).await;
         assert_eq!(list, json!([]));
+    }
+
+    #[tokio::test]
+    async fn rejects_days_that_havent_started_anywhere() {
+        let (app, alice, _) = app_with_users().await;
+        let a = Some(alice.as_str());
+        let body = || Some(json!({ "weight_g": 70_000 }));
+
+        // Tomorrow by the server's UTC date can already be today east of UTC.
+        let tomorrow = format!("/api/weights/{}", day_string(today_number() + 1));
+        let (status, _) = call(&app, "PUT", &tomorrow, a, body()).await;
+        assert_eq!(status, StatusCode::OK);
+
+        let later = format!("/api/weights/{}", day_string(today_number() + 2));
+        let (status, response) = call(&app, "PUT", &later, a, body()).await;
+        assert_eq!(
+            (status, response),
+            (StatusCode::BAD_REQUEST, json!({ "error": "future_day" }))
+        );
     }
 
     #[tokio::test]

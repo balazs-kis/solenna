@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     AppState,
-    api::{day_number, is_valid_day, today_number},
+    api::{day_number, is_future_day, is_valid_day, today_number},
     auth::CurrentUser,
     db::unix_now,
     error::AppError,
@@ -202,6 +202,14 @@ fn validated(body: Result<Json<PeriodBody>, JsonRejection>) -> Result<PeriodBody
         if !in_range || !(1..=5).contains(&flow.flow) || !seen.insert(flow.day.clone()) {
             return Err(AppError::BadRequest("invalid_flow"));
         }
+    }
+
+    // Nothing can be logged for a day that hasn't started anywhere yet.
+    let future = is_future_day(&body.start_day)
+        || body.end_day.as_deref().is_some_and(is_future_day)
+        || body.flow.iter().any(|flow| is_future_day(&flow.day));
+    if future {
+        return Err(AppError::BadRequest("future_day"));
     }
 
     // An ongoing period that started longer ago than the longest period must
@@ -442,6 +450,13 @@ mod tests {
                 "invalid_flow",
             ),
             (json!({ "end_day": "2026-10-01" }), "invalid_body"),
+            // Days that haven't started anywhere yet (more than a day past the server's date).
+            (json!({ "start_day": d(2) }), "future_day"),
+            (json!({ "start_day": d(-3), "end_day": d(2) }), "future_day"),
+            (
+                json!({ "start_day": d(-1), "flow": [{ "day": d(2), "flow": 2 }] }),
+                "future_day",
+            ),
             // Ongoing but started 16 days ago: it must have ended by now.
             (
                 json!({ "start_day": d(-16), "end_day": null }),

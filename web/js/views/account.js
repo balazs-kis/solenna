@@ -34,9 +34,18 @@ function setUi(patch) {
   setState({ accountUi: { ...ui(), ...patch } });
 }
 
-/** Called whenever this screen becomes active: start without stale messages. */
-export function load() {
+/**
+ * Called whenever this screen becomes active: start without stale messages,
+ * and fetch the server's release version (`state.appVersion`, not per-user).
+ */
+export async function load() {
   setState({ accountUi: {} });
+  try {
+    const { version } = await api('GET', '/api/health');
+    setState({ appVersion: version });
+  } catch {
+    // Not shown, then; it's only informational.
+  }
 }
 
 export function render(container, state) {
@@ -106,6 +115,7 @@ export function render(container, state) {
       ),
       renderDataSection(view, offline),
       renderDeleteSection(view, offline),
+      state.appVersion && h('p', { class: 'muted app-version' }, t('account.version', { version: state.appVersion })),
     ),
   );
 }

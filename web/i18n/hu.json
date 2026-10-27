@@ -137,6 +137,7 @@
   "account.deleteConfirmButton": "Minden törlése",
   "account.deleteFailed": "Nem sikerült törölni a fiókodat. Próbáld újra.",
   "account.cancel": "Mégse",
+  "account.version": "Solenna {version}",
   "language.en": "English",
   "language.hu": "Magyar",
   "notFound.title": "Az oldal nem található",
