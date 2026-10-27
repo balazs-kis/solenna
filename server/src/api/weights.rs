@@ -5,6 +5,7 @@ use axum::{
     extract::{Path, State, rejection::JsonRejection},
     http::StatusCode,
 };
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
 use crate::{AppState, api::is_valid_day, auth::CurrentUser, db::unix_now, error::AppError};
@@ -32,19 +33,22 @@ pub async fn list(
 ) -> Result<Json<Vec<Weight>>, AppError> {
     let weights = state
         .db
-        .call(move |conn| {
-            let mut statement =
-                conn.prepare("SELECT day, weight_g FROM weights WHERE user_id = ? ORDER BY day")?;
-            let rows = statement.query_map([user.id], |row| {
-                Ok(Weight {
-                    day: row.get(0)?,
-                    weight_g: row.get(1)?,
-                })
-            })?;
-            Ok(rows.collect::<Result<Vec<_>, _>>()?)
-        })
+        .call(move |conn| Ok(all_weights(conn, user.id)?))
         .await?;
     Ok(Json(weights))
+}
+
+/// All weigh-ins of a user, oldest first. Also used by the data export.
+pub fn all_weights(conn: &Connection, user_id: i64) -> rusqlite::Result<Vec<Weight>> {
+    let mut statement =
+        conn.prepare("SELECT day, weight_g FROM weights WHERE user_id = ? ORDER BY day")?;
+    let rows = statement.query_map([user_id], |row| {
+        Ok(Weight {
+            day: row.get(0)?,
+            weight_g: row.get(1)?,
+        })
+    })?;
+    rows.collect()
 }
 
 pub async fn put(

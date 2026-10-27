@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { analyzeCycle, assumedEnd, MAX_PERIOD_DAYS } from '../cycle-math.js';
+import { analyzeCycle, assumedEnd, MAX_PERIOD_DAYS, withoutFertility } from '../cycle-math.js';
 import { h } from '../dom.js';
 import { daysBetween, formatDay, formatDayLong, formatDays, formatRelativeDay, todayIso } from '../format.js';
 import { t } from '../i18n.js';
@@ -57,7 +57,9 @@ export function render(container, state) {
   if (!state.periods) return; // Still loading.
 
   const today = todayIso();
-  const analysis = analyzeCycle(state.periods, today);
+  const showFertility = state.user.settings.show_fertility;
+  const fullAnalysis = analyzeCycle(state.periods, today);
+  const analysis = showFertility ? fullAnalysis : withoutFertility(fullAnalysis);
   const selected = view.selected ?? today;
   const month = view.month ?? today.slice(0, 7);
 
@@ -76,10 +78,10 @@ export function render(container, state) {
           onSelect: (day) => setUi({ selected: day, error: null, confirmDelete: null }),
           onMonth: (next) => setUi({ month: next }),
         }),
-        renderLegend(),
+        renderLegend(showFertility),
         renderDayPanel(selected, analysis, view),
       ),
-      renderEvents(analysis),
+      renderEvents(analysis, showFertility),
       h(
         'p',
         { class: 'disclaimer' },
@@ -125,8 +127,11 @@ function renderQuickAction(analysis) {
   );
 }
 
-/** Two groups, matching the calendar's two layers: phase colours and fertility markers. */
-function renderLegend() {
+/**
+ * Two groups, matching the calendar's two layers: phase colours and fertility
+ * markers. With fertility info off, ovulation and the marker group are left out.
+ */
+function renderLegend(showFertility) {
   const swatch = (className, label) =>
     h('li', {}, h('span', { class: `legend-swatch ${className}`, 'aria-hidden': 'true' }), t(label));
   const marker = (level) => h('li', {}, fertilityMarker(level), t(fertilityLabels[level]));
@@ -143,16 +148,17 @@ function renderLegend() {
         swatch('is-period', 'cycle.legendPeriod'),
         swatch('is-predicted-period', 'cycle.legendPredicted'),
         swatch('phase-follicular', 'cycle.phaseFollicular'),
-        swatch('phase-ovulation', 'cycle.phaseOvulation'),
+        showFertility && swatch('phase-ovulation', 'cycle.phaseOvulation'),
         swatch('phase-luteal', 'cycle.phaseLuteal'),
       ),
     ),
-    h(
-      'div',
-      { class: 'legend-group' },
-      h('span', { class: 'legend-title' }, t('cycle.legendFertility')),
-      h('ul', {}, marker('medium'), marker('high')),
-    ),
+    showFertility &&
+      h(
+        'div',
+        { class: 'legend-group' },
+        h('span', { class: 'legend-title' }, t('cycle.legendFertility')),
+        h('ul', {}, marker('medium'), marker('high')),
+      ),
   );
 }
 
@@ -273,8 +279,11 @@ function renderDayActions(day, period, analysis, view) {
   return h('div', { class: 'actions' }, actions);
 }
 
-/** The key upcoming events as cards: phase today, next period, fertile window, ovulation, averages. */
-function renderEvents(analysis) {
+/**
+ * The key upcoming events as cards: phase today, next period, fertile window,
+ * ovulation, averages. The fertility cards only show with fertility info on.
+ */
+function renderEvents(analysis, showFertility) {
   const { last, today, stats, cycles } = analysis;
   if (!last) {
     return h('section', { class: 'card' }, h('p', { class: 'muted' }, t('cycle.empty')));
@@ -326,6 +335,30 @@ function renderEvents(analysis) {
     );
   }
 
+  if (showFertility) cards.push(...fertilityCards(analysis));
+
+  cards.push(
+    eventCard(
+      'stats',
+      'repeat',
+      t('cycle.averages', { cycle: formatDays(stats.cycleLength), period: formatDays(stats.periodLength) }),
+      averagesSource(stats),
+    ),
+  );
+
+  return h(
+    'section',
+    { class: 'stack' },
+    h('h2', {}, t('cycle.events')),
+    h('ul', { class: 'events' }, cards),
+  );
+}
+
+/** The next fertile window and ovulation, or why there's no estimate. */
+function fertilityCards(analysis) {
+  const { today, cycles } = analysis;
+  const cards = [];
+
   const fertile = cycles.find((c) => c.fertileEnd !== null && c.fertileEnd >= today);
   if (fertile) {
     const now = fertile.fertileStart <= today;
@@ -355,22 +388,7 @@ function renderEvents(analysis) {
   if (analysis.overdueBy === 0 && cycles.some((c) => c.predicted && c.ovulation === null)) {
     cards.push(eventCard('fertile', 'sprout', t('cycle.noOvulationEstimate'), t('cycle.noOvulationEstimateText')));
   }
-
-  cards.push(
-    eventCard(
-      'stats',
-      'repeat',
-      t('cycle.averages', { cycle: formatDays(stats.cycleLength), period: formatDays(stats.periodLength) }),
-      averagesSource(stats),
-    ),
-  );
-
-  return h(
-    'section',
-    { class: 'stack' },
-    h('h2', {}, t('cycle.events')),
-    h('ul', { class: 'events' }, cards),
-  );
+  return cards;
 }
 
 /** Where the averages come from, naming the real reason when they're typical values. */

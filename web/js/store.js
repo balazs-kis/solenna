@@ -16,6 +16,8 @@ export const SIGNED_OUT = {
   weightUi: undefined,
   periods: undefined,
   cycleUi: undefined,
+  accountUi: undefined,
+  avatarFailed: undefined,
 };
 
 export function getState() {

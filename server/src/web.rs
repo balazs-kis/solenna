@@ -108,6 +108,22 @@ mod tests {
     }
 
     #[test]
+    fn server_knows_every_dictionary() {
+        let mut files: Vec<String> = fs::read_dir(web_dir().join("i18n"))
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
+            .map(|path| path.file_stem().unwrap().to_string_lossy().into_owned())
+            .collect();
+        files.sort();
+        assert_eq!(
+            files,
+            crate::api::me::LANGUAGES,
+            "update api::me::LANGUAGES"
+        );
+    }
+
+    #[test]
     fn translations_are_complete_and_in_sync() {
         let en = dictionary("en");
         let hu = dictionary("hu");

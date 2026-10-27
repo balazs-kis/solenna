@@ -27,12 +27,17 @@ export function locale() {
 }
 
 /**
- * Saved choice, then the browser's languages, then English.
- * (The saved choice moves to the user's server-side settings in a later step.)
+ * Before the account is loaded: the language this device last used, then the
+ * browser's languages, then English. Once signed in, the account's language
+ * setting (if the user picked one) replaces it.
  */
 export function detectLanguage() {
   const saved = readSaved();
-  if (dictionaries[saved]) return saved;
+  return dictionaries[saved] ? saved : browserLanguage();
+}
+
+/** The first of the browser's languages we have, else English. */
+export function browserLanguage() {
   for (const tag of navigator.languages ?? [navigator.language]) {
     const base = tag?.split('-')[0];
     if (dictionaries[base]) return base;
@@ -40,9 +45,11 @@ export function detectLanguage() {
   return 'en';
 }
 
+/** Remembers the account's language on this device; null (follow the browser) forgets it. */
 export function saveLanguage(lang) {
   try {
-    localStorage.setItem(STORAGE_KEY, lang);
+    if (lang) localStorage.setItem(STORAGE_KEY, lang);
+    else localStorage.removeItem(STORAGE_KEY);
   } catch {
     // Storage can be unavailable (private mode); the choice just won't persist.
   }

@@ -24,7 +24,13 @@ use rusqlite::{Connection, OptionalExtension};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-use crate::{AppState, config::Config, db::unix_now, error::AppError};
+use crate::{
+    AppState,
+    avatar::{self, AvatarChange},
+    config::Config,
+    db::unix_now,
+    error::AppError,
+};
 
 const GOOGLE_AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
@@ -222,11 +228,13 @@ async fn finish_login(
         LoginError::Failed
     })?;
 
+    let avatar = avatar::fetch(&state.http, claims.picture.as_deref()).await;
+
     // Signing in again in this browser replaces its previous session.
     let previous = read_cookie(headers, SESSION_COOKIE).map(|token| hash_token(&token));
     state
         .db
-        .call(move |conn| login_user(conn, &claims, now, previous))
+        .call(move |conn| login_user(conn, &claims, avatar, now, previous))
         .await
         .map_err(|_| LoginError::Failed)
 }
@@ -297,6 +305,9 @@ struct IdClaims {
     email: String,
     #[serde(default)]
     name: String,
+    /// URL of the profile picture (the `profile` scope), if the user has one.
+    #[serde(default)]
+    picture: Option<String>,
 }
 
 /// The ID token comes straight from Google's token endpoint over TLS, so the TLS
@@ -322,12 +333,13 @@ fn verify_id_token(id_token: &str, client_id: &str, now: i64) -> Result<IdClaims
     Ok(claims)
 }
 
-/// Creates or updates the user and starts a session, ending `previous` (the hash
-/// of the browser's old session, if any). Returns the session token for the
-/// cookie; only its hash is stored.
+/// Creates or updates the user (with their picture) and starts a session,
+/// ending `previous` (the hash of the browser's old session, if any). Returns
+/// the session token for the cookie; only its hash is stored.
 fn login_user(
     conn: &mut Connection,
     claims: &IdClaims,
+    avatar: AvatarChange,
     now: i64,
     previous: Option<Vec<u8>>,
 ) -> Result<String, AppError> {
@@ -344,6 +356,21 @@ fn login_user(
         (&claims.sub, &claims.email, &claims.name, now),
         |row| row.get(0),
     )?;
+    match avatar {
+        AvatarChange::Keep => {}
+        AvatarChange::Remove => {
+            tx.execute(
+                "UPDATE users SET avatar = NULL, avatar_type = NULL WHERE id = ?",
+                [user_id],
+            )?;
+        }
+        AvatarChange::Replace(avatar) => {
+            tx.execute(
+                "UPDATE users SET avatar = ?, avatar_type = ? WHERE id = ?",
+                (avatar.bytes, avatar.content_type, user_id),
+            )?;
+        }
+    }
     // Housekeeping: logins are rare enough to clean up expired sessions here.
     tx.execute("DELETE FROM sessions WHERE expires_at <= ?", [now])?;
 
@@ -389,12 +416,16 @@ async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Result<Res
             })
             .await?;
     }
-    let clear = cookie(SESSION_COOKIE, "", "/", 0, state.config.secure_cookies());
     Ok((
-        AppendHeaders([(header::SET_COOKIE, clear)]),
+        AppendHeaders([(header::SET_COOKIE, clear_session_cookie(&state.config))]),
         StatusCode::NO_CONTENT,
     )
         .into_response())
+}
+
+/// A `Set-Cookie` value that removes the session cookie (logout, account deletion).
+pub fn clear_session_cookie(config: &Config) -> String {
+    cookie(SESSION_COOKIE, "", "/", 0, config.secure_cookies())
 }
 
 fn redirect_uri(config: &Config) -> String {
@@ -439,10 +470,11 @@ pub async fn test_session(state: &AppState, sub: &'static str, email: &'static s
         sub: sub.into(),
         email: email.into(),
         name: String::new(),
+        picture: None,
     };
     let token = state
         .db
-        .call(move |conn| login_user(conn, &claims, unix_now(), None))
+        .call(move |conn| login_user(conn, &claims, AvatarChange::Keep, unix_now(), None))
         .await
         .unwrap();
     format!("{SESSION_COOKIE}={token}")
@@ -479,6 +511,7 @@ mod tests {
             sub: sub.into(),
             email: email.into(),
             name: String::new(),
+            picture: None,
         }
     }
 
@@ -581,6 +614,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn sign_in_replaces_keeps_or_removes_the_picture() {
+        let state = test_state();
+        let jpeg = || {
+            AvatarChange::Replace(crate::avatar::Avatar {
+                bytes: vec![0xFF, 0xD8, 0xFF, 1],
+                content_type: "image/jpeg",
+            })
+        };
+        let mut stored = Vec::new();
+        for change in [jpeg(), AvatarChange::Keep, AvatarChange::Remove] {
+            let avatar: Option<(Vec<u8>, String)> = state
+                .db
+                .call(move |conn| {
+                    login_user(conn, &claims("sub", "a@example.com"), change, NOW, None)?;
+                    Ok(
+                        conn.query_row("SELECT avatar, avatar_type FROM users", [], |row| {
+                            Ok(row.get::<_, Option<Vec<u8>>>(0)?.zip(row.get(1)?))
+                        })?,
+                    )
+                })
+                .await
+                .unwrap();
+            stored.push(avatar.map(|(bytes, kind)| (bytes.len(), kind)));
+        }
+        let jpeg_row = Some((4, "image/jpeg".to_string()));
+        assert_eq!(stored, [jpeg_row.clone(), jpeg_row, None]);
+    }
+
+    #[tokio::test]
     async fn login_replaces_the_browsers_previous_session() {
         let state = test_state();
         let old = session_for(&state, "sub-1", "a@example.com").await;
@@ -594,6 +656,7 @@ mod tests {
                 login_user(
                     conn,
                     &claims("sub-2", "b@example.com"),
+                    AvatarChange::Keep,
                     unix_now(),
                     Some(old_hash),
                 )
@@ -611,7 +674,15 @@ mod tests {
         let state = test_state();
         let token = state
             .db
-            .call(|conn| login_user(conn, &claims("sub", "a@example.com"), NOW, None))
+            .call(|conn| {
+                login_user(
+                    conn,
+                    &claims("sub", "a@example.com"),
+                    AvatarChange::Keep,
+                    NOW,
+                    None,
+                )
+            })
             .await
             .unwrap();
         let hash = hash_token(&token);

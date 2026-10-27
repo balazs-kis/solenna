@@ -58,46 +58,48 @@ pub async fn list(
 ) -> Result<Json<Vec<Period>>, AppError> {
     let periods = state
         .db
-        .call(move |conn| {
-            let mut flows: BTreeMap<i64, Vec<FlowDay>> = BTreeMap::new();
-            let mut statement = conn.prepare(
-                "SELECT f.period_id, f.day, f.flow FROM period_flow f
-                 JOIN periods p ON p.id = f.period_id
-                 WHERE p.user_id = ? ORDER BY f.day",
-            )?;
-            let rows = statement.query_map([user.id], |row| {
-                Ok((
-                    row.get::<_, i64>(0)?,
-                    FlowDay {
-                        day: row.get(1)?,
-                        flow: row.get(2)?,
-                    },
-                ))
-            })?;
-            for row in rows {
-                let (period_id, flow) = row?;
-                flows.entry(period_id).or_default().push(flow);
-            }
-
-            let mut statement = conn.prepare(
-                "SELECT id, start_day, end_day FROM periods WHERE user_id = ? ORDER BY start_day",
-            )?;
-            let rows = statement
-                .query_map([user.id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?;
-            let mut periods = Vec::new();
-            for row in rows {
-                let (id, start_day, end_day) = row?;
-                periods.push(Period {
-                    id,
-                    start_day,
-                    end_day,
-                    flow: flows.remove(&id).unwrap_or_default(),
-                });
-            }
-            Ok(periods)
-        })
+        .call(move |conn| Ok(all_periods(conn, user.id)?))
         .await?;
     Ok(Json(periods))
+}
+
+/// All periods of a user, oldest first. Also used by the data export.
+pub fn all_periods(conn: &Connection, user_id: i64) -> rusqlite::Result<Vec<Period>> {
+    let mut flows: BTreeMap<i64, Vec<FlowDay>> = BTreeMap::new();
+    let mut statement = conn.prepare(
+        "SELECT f.period_id, f.day, f.flow FROM period_flow f
+         JOIN periods p ON p.id = f.period_id
+         WHERE p.user_id = ? ORDER BY f.day",
+    )?;
+    let rows = statement.query_map([user_id], |row| {
+        Ok((
+            row.get::<_, i64>(0)?,
+            FlowDay {
+                day: row.get(1)?,
+                flow: row.get(2)?,
+            },
+        ))
+    })?;
+    for row in rows {
+        let (period_id, flow) = row?;
+        flows.entry(period_id).or_default().push(flow);
+    }
+
+    let mut statement = conn.prepare(
+        "SELECT id, start_day, end_day FROM periods WHERE user_id = ? ORDER BY start_day",
+    )?;
+    let rows = statement.query_map([user_id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?;
+    let mut periods = Vec::new();
+    for row in rows {
+        let (id, start_day, end_day) = row?;
+        periods.push(Period {
+            id,
+            start_day,
+            end_day,
+            flow: flows.remove(&id).unwrap_or_default(),
+        });
+    }
+    Ok(periods)
 }
 
 pub async fn create(

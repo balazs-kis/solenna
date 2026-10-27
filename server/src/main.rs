@@ -1,5 +1,6 @@
 mod api;
 mod auth;
+mod avatar;
 mod config;
 mod db;
 mod error;
@@ -35,6 +36,9 @@ impl AppState {
             config: Arc::new(config),
             http: reqwest::Client::builder()
                 .timeout(Duration::from_secs(10))
+                // Google's endpoints don't redirect; a redirect could only lead
+                // the picture download off Google's host.
+                .redirect(reqwest::redirect::Policy::none())
                 .build()
                 .expect("HTTP client"),
             auth_limiter: Arc::new(RateLimiter::new(60, Duration::from_secs(60))),
@@ -80,7 +84,10 @@ async fn main() {
 fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/health", get(health))
-        .route("/api/me", get(api::me::get))
+        .route("/api/me", get(api::me::get).delete(api::me::delete))
+        .route("/api/me/avatar", get(api::me::avatar))
+        .route("/api/me/export", get(api::me::export))
+        .route("/api/me/settings", put(api::me::put_settings))
         .route(
             "/api/periods",
             get(api::periods::list).post(api::periods::create),

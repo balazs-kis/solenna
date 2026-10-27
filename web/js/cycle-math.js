@@ -73,6 +73,21 @@ export function analyzeCycle(periods, today) {
 }
 
 /**
+ * The same analysis with fertility hidden (the user's "fertility info" setting
+ * is off): no fertility level on any day, and ovulation day counts as the end
+ * of the follicular phase.
+ */
+export function withoutFertility(analysis) {
+  return {
+    ...analysis,
+    dayInfo: (day) => {
+      const info = analysis.dayInfo(day);
+      return { ...info, fertility: null, phase: info.phase === 'ovulation' ? 'follicular' : info.phase };
+    },
+  };
+}
+
+/**
  * The last day an ongoing period covers so far: today, but never more than the
  * longest period we accept.
  */

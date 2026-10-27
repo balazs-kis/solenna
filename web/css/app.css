@@ -1,59 +1,45 @@
-/* Theme tokens. Dark mode follows the OS setting. */
+/*
+ * Theme tokens: light-dark(light value, dark value). The theme follows the OS
+ * setting unless Settings saved an override on this device (`data-theme` on
+ * <html>, set by js/theme-init.js before the page renders).
+ */
 :root {
   color-scheme: light dark;
 
-  --bg: #faf8f9;
-  --surface: #ffffff;
-  --text: #1f1a1d;
-  --text-muted: #6b6268;
-  --border: #e7e1e4;
-  --accent: #b83a64;
-  --accent-soft: #f9e6ed;
-  --on-accent: #ffffff;
-  --error: #b42318;
-  --on-error: #ffffff;
+  --bg: light-dark(#faf8f9, #151215);
+  --surface: light-dark(#ffffff, #1f1a1e);
+  --text: light-dark(#1f1a1d, #f2edf0);
+  --text-muted: light-dark(#6b6268, #a89ea4);
+  --border: light-dark(#e7e1e4, #342c31);
+  --accent: light-dark(#b83a64, #f08cad);
+  --accent-soft: light-dark(#f9e6ed, #3a2430);
+  --on-accent: light-dark(#ffffff, #1f1a1d);
+  --error: light-dark(#b42318, #ff8a80);
+  --on-error: light-dark(#ffffff, #1f1a1d);
 
   /* Cycle phases */
-  --period: #d14468;
-  --period-soft: #f7d4de;
-  --on-period: #ffffff;
-  --fertile: #16897e;
-  --fertile-soft: #d2efeb;
-  --on-fertile: #ffffff;
-  --follicular: #b7791f;
-  --follicular-soft: #f8ead2;
-  --luteal: #6f5bb5;
-  --luteal-soft: #e6e0f6;
+  --period: light-dark(#d14468, #ee6d8f);
+  --period-soft: light-dark(#f7d4de, #4b2733);
+  --on-period: light-dark(#ffffff, #1f1a1d);
+  --fertile: light-dark(#16897e, #4fc2b5);
+  --fertile-soft: light-dark(#d2efeb, #173c38);
+  --on-fertile: light-dark(#ffffff, #10201e);
+  --follicular: light-dark(#b7791f, #e3ad55);
+  --follicular-soft: light-dark(#f8ead2, #3f3018);
+  --luteal: light-dark(#6f5bb5, #a998ea);
+  --luteal-soft: light-dark(#e6e0f6, #2e2747);
 
   --radius: 12px;
   --nav-height: 64px;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #151215;
-    --surface: #1f1a1e;
-    --text: #f2edf0;
-    --text-muted: #a89ea4;
-    --border: #342c31;
-    --accent: #f08cad;
-    --accent-soft: #3a2430;
-    --on-accent: #1f1a1d;
-    --error: #ff8a80;
-    --on-error: #1f1a1d;
+:root[data-theme="light"] {
+  color-scheme: light;
+}
 
-    --period: #ee6d8f;
-    --period-soft: #4b2733;
-    --on-period: #1f1a1d;
-    --fertile: #4fc2b5;
-    --fertile-soft: #173c38;
-    --on-fertile: #10201e;
-    --follicular: #e3ad55;
-    --follicular-soft: #3f3018;
-    --luteal: #a998ea;
-    --luteal-soft: #2e2747;
-  }
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 /* Base */
@@ -108,7 +94,6 @@ a {
 
 .icon-weight { mask-image: url("../icons/weight.svg"); }
 .icon-cycle { mask-image: url("../icons/cycle.svg"); }
-.icon-settings { mask-image: url("../icons/settings.svg"); }
 .icon-drop { mask-image: url("../icons/drop.svg"); }
 .icon-sprout { mask-image: url("../icons/sprout.svg"); }
 .icon-ovulation { mask-image: url("../icons/ovulation.svg"); }
@@ -170,6 +155,15 @@ a {
   }
 }
 
+/* The account entry: the user's picture instead of an icon. Name and email only show on desktop. */
+.nav-account[aria-current="page"] .avatar {
+  box-shadow: 0 0 0 1.5px var(--surface), 0 0 0 3px var(--accent);
+}
+
+.nav-person {
+  display: none;
+}
+
 /* Desktop: sidebar */
 @media (min-width: 768px) {
   .app:has(> .nav) {
@@ -185,6 +179,8 @@ a {
   .nav {
     position: sticky;
     top: 0;
+    display: flex;
+    flex-direction: column;
     height: 100dvh;
     padding: 1.5rem 0.75rem;
     border-top: none;
@@ -202,9 +198,56 @@ a {
   }
 
   .nav-list {
+    flex: 1;
     flex-direction: column;
     gap: 4px;
     height: auto;
+
+    & li {
+      flex: none;
+    }
+
+    /* The account entry sits at the bottom of the sidebar. */
+    & li:has(.nav-account) {
+      margin-top: auto;
+    }
+  }
+
+  .nav-account {
+    min-height: 56px;
+    padding-block: 0.5rem;
+  }
+
+  /* Hidden visually, still part of the link's accessible name. */
+  .nav-account-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .nav-person {
+    display: grid;
+    min-width: 0;
+    line-height: 1.3;
+
+    & span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  .nav-person-name {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .nav-person-email {
+    color: var(--text-muted);
+    font-size: 0.8125rem;
   }
 
   .nav-link {
@@ -262,6 +305,101 @@ a {
 
   & input[readonly] {
     color: var(--text-muted);
+  }
+}
+
+/* The user's picture, or their initial in a circle. */
+.avatar {
+  --size: 28px;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: var(--size);
+  height: var(--size);
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+/* The download is 384px, 4x this size; raise it in avatar.rs if this grows. */
+.avatar-large {
+  --size: 96px;
+}
+
+.avatar-monogram {
+  color: var(--accent);
+  font-size: calc(var(--size) * 0.45);
+  font-weight: 700;
+  line-height: 1;
+  background: var(--accent-soft);
+}
+
+/* Account screen: picture, name and email, and the sign-out button. */
+.profile {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 1rem;
+
+  & .button {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  @media (min-width: 480px) {
+    grid-template-columns: auto 1fr auto;
+
+    & .button {
+      grid-column: auto;
+    }
+  }
+}
+
+.profile-text {
+  min-width: 0;
+
+  & p {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+.profile-name {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.profile-error {
+  grid-column: 1 / -1;
+}
+
+.danger-zone {
+  border-color: color-mix(in srgb, var(--error) 40%, var(--border));
+}
+
+/* Checkbox setting: the label is the 44px touch target, the hint sits below it. */
+.toggle {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.75rem;
+  align-items: center;
+
+  & input {
+    width: 1.25rem;
+    height: 1.25rem;
+    margin: 0;
+    accent-color: var(--accent);
+  }
+
+  & label {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  & p {
+    grid-column: 2;
   }
 }
 
