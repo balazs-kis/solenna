@@ -1,6 +1,7 @@
-//! The user's Google profile picture. It's downloaded once at sign-in and
-//! served from our own origin (`GET /api/me/avatar`), so the browser never
-//! loads anything from Google and Google never sees when the app is opened.
+//! The user's Google profile picture. It's downloaded at sign-in and handed to
+//! the browser with the rest of the profile (see `PendingProfiles` in auth.rs),
+//! so the browser never loads anything from Google and Google never sees when
+//! the app is opened. It's never stored in the database.
 
 use std::time::Duration;
 
@@ -11,7 +12,7 @@ use reqwest::Url;
 const SIZE_PX: u32 = 384;
 /// A 384px JPEG is usually 25–50 KB; anything far bigger isn't what we asked for.
 const MAX_BYTES: usize = 200 * 1024;
-/// Sign-in waits for the download, so keep it short. On timeout the old picture stays.
+/// Sign-in waits for the download, so keep it short. On timeout there's just no picture.
 const TIMEOUT: Duration = Duration::from_secs(5);
 
 pub struct Avatar {
@@ -20,32 +21,30 @@ pub struct Avatar {
     pub content_type: &'static str,
 }
 
-/// What a sign-in does to the stored picture.
-pub enum AvatarChange {
-    /// The download failed: keep whatever we had.
-    Keep,
-    /// The ID token has no picture.
-    Remove,
-    Replace(Avatar),
+impl Avatar {
+    /// As a `data:` URL, for an `<img src>` (the CSP allows `img-src data:`).
+    pub fn data_url(&self) -> String {
+        use base64::{Engine, engine::general_purpose::STANDARD};
+        format!(
+            "data:{};base64,{}",
+            self.content_type,
+            STANDARD.encode(&self.bytes)
+        )
+    }
 }
 
 /// Downloads the picture from the ID token's `picture` claim. Never fails the
-/// sign-in: problems are logged (without the URL) and the old picture stays.
-pub async fn fetch(http: &reqwest::Client, picture: Option<&str>) -> AvatarChange {
-    let Some(picture) = picture else {
-        return AvatarChange::Remove;
-    };
-    let Some(url) = sized_url(picture) else {
+/// sign-in: problems are logged (without the URL), and the app shows the
+/// monogram instead.
+pub async fn fetch(http: &reqwest::Client, picture: Option<&str>) -> Option<Avatar> {
+    let url = sized_url(picture?).or_else(|| {
         tracing::warn!("ignoring profile picture with an unexpected URL");
-        return AvatarChange::Keep;
-    };
-    match download(http, url).await {
-        Ok(avatar) => AvatarChange::Replace(avatar),
-        Err(reason) => {
-            tracing::warn!("profile picture download failed: {reason}");
-            AvatarChange::Keep
-        }
-    }
+        None
+    })?;
+    download(http, url)
+        .await
+        .inspect_err(|reason| tracing::warn!("profile picture download failed: {reason}"))
+        .ok()
 }
 
 /// Only https URLs on Google's picture host are fetched. Current ones end in a

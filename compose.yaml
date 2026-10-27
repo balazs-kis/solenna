@@ -6,6 +6,12 @@ services:
     # :latest is the newest release. Pin a version (e.g. :0.2.0) to stay on it or roll back.
     image: ghcr.io/balazs-kis/solenna:latest
     restart: unless-stopped
+    # Hardening, in case someone ever finds a way into the app: it needs no Linux
+    # capabilities, writes nothing outside /data, and can never gain privileges.
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
     env_file: .env
     environment:
       # Fixed for the container; these override anything in .env.

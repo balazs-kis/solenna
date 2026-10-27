@@ -109,6 +109,7 @@
   "cycle.typicalCycleGaps": "Tipikus ciklushossz: a rögzített menstruációk közötti szünetek kihagyott bejegyzésnek tűnnek (15 napnál rövidebbek vagy 60 napnál hosszabbak).",
   "cycle.typicalPeriodLength": "Tipikus menstruációhossz, amíg egy rögzített menstruáció véget nem ér.",
   "account.title": "Fiók",
+  "account.googleAccount": "Google-fiók",
   "account.language": "Nyelv",
   "account.languageDevice": "Az eszköz szerint",
   "account.logout": "Kijelentkezés",

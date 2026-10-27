@@ -7,7 +7,8 @@
 //! `/?auth_error=cancelled|failed` for the frontend to show.
 
 use std::{
-    sync::Mutex,
+    collections::HashMap,
+    sync::{Mutex, PoisonError},
     time::{Duration, Instant},
 };
 
@@ -26,7 +27,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     AppState,
-    avatar::{self, AvatarChange},
+    avatar::{self, Avatar},
     config::Config,
     db::unix_now,
     error::AppError,
@@ -60,6 +61,8 @@ pub fn routes() -> Router<AppState> {
 /// session are rejected with 401 before the handler runs.
 pub struct CurrentUser {
     pub id: i64,
+    /// The hash of this session's token (picks up the session's `PendingProfiles` entry).
+    pub session: Vec<u8>,
 }
 
 impl FromRequestParts<AppState> for CurrentUser {
@@ -69,14 +72,60 @@ impl FromRequestParts<AppState> for CurrentUser {
         let token = read_cookie(&parts.headers, SESSION_COOKIE).ok_or(AppError::Unauthorized)?;
         let hash = hash_token(&token);
         let now = unix_now();
+        let session = hash.clone();
         let user_id = state
             .db
             .call(move |conn| lookup_session(conn, &hash, now))
             .await?;
         user_id
-            .map(|id| CurrentUser { id })
+            .map(|id| CurrentUser { id, session })
             .ok_or(AppError::Unauthorized)
     }
+}
+
+/// How long a fresh sign-in's profile waits for the browser to pick it up.
+const PROFILE_TTL: Duration = Duration::from_secs(10 * 60);
+
+/// The name, email and picture from Google, for display only.
+pub struct Profile {
+    pub name: String,
+    pub email: String,
+    pub avatar: Option<Avatar>,
+}
+
+/// The profiles of fresh sign-ins, by session hash. They're never written to
+/// the database: they wait here, in memory, until that session's first
+/// `GET /api/me` takes them (at most `PROFILE_TTL`), and the browser keeps them
+/// from then on. A restart in between loses one, and the app shows a generic
+/// "Google account" until the next sign-in.
+#[derive(Default)]
+pub struct PendingProfiles {
+    profiles: Mutex<HashMap<Vec<u8>, (Instant, Profile)>>,
+}
+
+impl PendingProfiles {
+    fn insert(&self, session: Vec<u8>, profile: Profile, now: Instant) {
+        let mut profiles = self.profiles.lock().unwrap_or_else(PoisonError::into_inner);
+        profiles.retain(|_, (added, _)| now.duration_since(*added) < PROFILE_TTL);
+        profiles.insert(session, (now, profile));
+    }
+
+    /// The session's profile, once: it's gone from memory afterwards.
+    pub fn take(&self, session: &[u8], now: Instant) -> Option<Profile> {
+        let mut profiles = self.profiles.lock().unwrap_or_else(PoisonError::into_inner);
+        let (added, profile) = profiles.remove(session)?;
+        (now.duration_since(added) < PROFILE_TTL).then_some(profile)
+    }
+}
+
+/// Users are found by this, not by `sub` itself: for personal Google accounts
+/// `sub` is the account's global Google ID, which public tools can map to a
+/// name and photo. So a stolen database can't be matched to people in bulk.
+pub fn sub_hash(sub: &str) -> String {
+    Sha256::digest(sub.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 /// Fixed-window limit on all auth requests together. A per-IP limit would mean
@@ -228,15 +277,24 @@ async fn finish_login(
         LoginError::Failed
     })?;
 
-    let avatar = avatar::fetch(&state.http, claims.picture.as_deref()).await;
+    let profile = Profile {
+        name: claims.name,
+        email: claims.email,
+        avatar: avatar::fetch(&state.http, claims.picture.as_deref()).await,
+    };
 
     // Signing in again in this browser replaces its previous session.
     let previous = read_cookie(headers, SESSION_COOKIE).map(|token| hash_token(&token));
-    state
+    let sub = claims.sub;
+    let token = state
         .db
-        .call(move |conn| login_user(conn, &claims, avatar, now, previous))
+        .call(move |conn| login_user(conn, &sub, now, previous))
         .await
-        .map_err(|_| LoginError::Failed)
+        .map_err(|_| LoginError::Failed)?;
+    state
+        .profiles
+        .insert(hash_token(&token), profile, Instant::now());
+    Ok(token)
 }
 
 /// Error codes Google's authorization endpoint documents (RFC 6749 4.1.2.1 plus
@@ -333,13 +391,13 @@ fn verify_id_token(id_token: &str, client_id: &str, now: i64) -> Result<IdClaims
     Ok(claims)
 }
 
-/// Creates or updates the user (with their picture) and starts a session,
-/// ending `previous` (the hash of the browser's old session, if any). Returns
-/// the session token for the cookie; only its hash is stored.
+/// Creates the user on first sign-in and starts a session, ending `previous`
+/// (the hash of the browser's old session, if any). Returns the session token
+/// for the cookie; only its hash is stored. Nothing about who the user is gets
+/// stored, only `sub_hash`.
 fn login_user(
     conn: &mut Connection,
-    claims: &IdClaims,
-    avatar: AvatarChange,
+    sub: &str,
     now: i64,
     previous: Option<Vec<u8>>,
 ) -> Result<String, AppError> {
@@ -348,29 +406,12 @@ fn login_user(
         tx.execute("DELETE FROM sessions WHERE token_hash = ?", [previous])?;
     }
     let user_id: i64 = tx.query_row(
-        "INSERT INTO users (google_sub, email, name, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?4)
-         ON CONFLICT (google_sub) DO UPDATE
-         SET email = excluded.email, name = excluded.name, updated_at = excluded.updated_at
+        "INSERT INTO users (sub_hash, created_at, updated_at) VALUES (?1, ?2, ?2)
+         ON CONFLICT (sub_hash) DO UPDATE SET updated_at = excluded.updated_at
          RETURNING id",
-        (&claims.sub, &claims.email, &claims.name, now),
+        (sub_hash(sub), now),
         |row| row.get(0),
     )?;
-    match avatar {
-        AvatarChange::Keep => {}
-        AvatarChange::Remove => {
-            tx.execute(
-                "UPDATE users SET avatar = NULL, avatar_type = NULL WHERE id = ?",
-                [user_id],
-            )?;
-        }
-        AvatarChange::Replace(avatar) => {
-            tx.execute(
-                "UPDATE users SET avatar = ?, avatar_type = ? WHERE id = ?",
-                (avatar.bytes, avatar.content_type, user_id),
-            )?;
-        }
-    }
     // Housekeeping: logins are rare enough to clean up expired sessions here.
     tx.execute("DELETE FROM sessions WHERE expires_at <= ?", [now])?;
 
@@ -459,24 +500,24 @@ fn read_cookie(headers: &HeaderMap, name: &str) -> Option<String> {
         .map(|(_, value)| value.to_string())
 }
 
-/// Signs a user in directly (skipping Google) and returns a `Cookie` header
-/// value for their session. For tests of any route that needs a session.
+/// Signs a user in directly (skipping Google), with `email` as their pending
+/// profile, and returns a `Cookie` header value for the session. For tests of
+/// any route that needs a session.
 #[cfg(test)]
 pub async fn test_session(state: &AppState, sub: &'static str, email: &'static str) -> String {
-    let claims = IdClaims {
-        iss: "https://accounts.google.com".into(),
-        aud: state.config.google_client_id.clone(),
-        exp: i64::MAX,
-        sub: sub.into(),
-        email: email.into(),
-        name: String::new(),
-        picture: None,
-    };
     let token = state
         .db
-        .call(move |conn| login_user(conn, &claims, AvatarChange::Keep, unix_now(), None))
+        .call(move |conn| login_user(conn, sub, unix_now(), None))
         .await
         .unwrap();
+    let profile = Profile {
+        name: String::new(),
+        email: email.into(),
+        avatar: None,
+    };
+    state
+        .profiles
+        .insert(hash_token(&token), profile, Instant::now());
     format!("{SESSION_COOKIE}={token}")
 }
 
@@ -501,18 +542,6 @@ mod tests {
             encode(&json!({ "alg": "RS256" })),
             encode(&claims)
         )
-    }
-
-    fn claims(sub: &str, email: &str) -> IdClaims {
-        IdClaims {
-            iss: "https://accounts.google.com".into(),
-            aud: "test-client-id".into(),
-            exp: NOW + 3600,
-            sub: sub.into(),
-            email: email.into(),
-            name: String::new(),
-            picture: None,
-        }
     }
 
     async fn send(app: &Router, request: Request<Body>) -> Response {
@@ -599,47 +628,38 @@ mod tests {
         let second = session_for(&state, "sub-1", "new@example.com").await;
         assert_ne!(first, second, "each login gets its own session");
 
-        let (users, email): (i64, String) = state
+        let (users, hash): (i64, String) = state
             .db
             .call(|conn| {
                 Ok(
-                    conn.query_row("SELECT COUNT(*), MAX(email) FROM users", [], |row| {
+                    conn.query_row("SELECT COUNT(*), MAX(sub_hash) FROM users", [], |row| {
                         Ok((row.get(0)?, row.get(1)?))
                     })?,
                 )
             })
             .await
             .unwrap();
-        assert_eq!((users, email.as_str()), (1, "new@example.com"));
+        // Only the hash is stored, never the sub itself.
+        assert_eq!((users, hash), (1, sub_hash("sub-1")));
     }
 
-    #[tokio::test]
-    async fn sign_in_replaces_keeps_or_removes_the_picture() {
-        let state = test_state();
-        let jpeg = || {
-            AvatarChange::Replace(crate::avatar::Avatar {
-                bytes: vec![0xFF, 0xD8, 0xFF, 1],
-                content_type: "image/jpeg",
-            })
+    #[test]
+    fn profiles_are_handed_over_once_and_expire() {
+        let profiles = PendingProfiles::default();
+        let profile = |email: &str| Profile {
+            name: String::new(),
+            email: email.into(),
+            avatar: None,
         };
-        let mut stored = Vec::new();
-        for change in [jpeg(), AvatarChange::Keep, AvatarChange::Remove] {
-            let avatar: Option<(Vec<u8>, String)> = state
-                .db
-                .call(move |conn| {
-                    login_user(conn, &claims("sub", "a@example.com"), change, NOW, None)?;
-                    Ok(
-                        conn.query_row("SELECT avatar, avatar_type FROM users", [], |row| {
-                            Ok(row.get::<_, Option<Vec<u8>>>(0)?.zip(row.get(1)?))
-                        })?,
-                    )
-                })
-                .await
-                .unwrap();
-            stored.push(avatar.map(|(bytes, kind)| (bytes.len(), kind)));
-        }
-        let jpeg_row = Some((4, "image/jpeg".to_string()));
-        assert_eq!(stored, [jpeg_row.clone(), jpeg_row, None]);
+        let now = Instant::now();
+        profiles.insert(b"a".to_vec(), profile("a@example.com"), now);
+        profiles.insert(b"b".to_vec(), profile("b@example.com"), now);
+
+        let taken = profiles.take(b"a", now).map(|p| p.email);
+        assert_eq!(taken.as_deref(), Some("a@example.com"));
+        assert!(profiles.take(b"a", now).is_none(), "only once");
+        // Too late: the browser had PROFILE_TTL to pick it up.
+        assert!(profiles.take(b"b", now + PROFILE_TTL).is_none());
     }
 
     #[tokio::test]
@@ -652,15 +672,7 @@ mod tests {
         let old_hash = hash_token(old.strip_prefix("solenna_session=").unwrap());
         state
             .db
-            .call(move |conn| {
-                login_user(
-                    conn,
-                    &claims("sub-2", "b@example.com"),
-                    AvatarChange::Keep,
-                    unix_now(),
-                    Some(old_hash),
-                )
-            })
+            .call(move |conn| login_user(conn, "sub-2", unix_now(), Some(old_hash)))
             .await
             .unwrap();
         // The old session is gone; the other device's session and the new one remain.
@@ -674,15 +686,7 @@ mod tests {
         let state = test_state();
         let token = state
             .db
-            .call(|conn| {
-                login_user(
-                    conn,
-                    &claims("sub", "a@example.com"),
-                    AvatarChange::Keep,
-                    NOW,
-                    None,
-                )
-            })
+            .call(|conn| login_user(conn, "sub", NOW, None))
             .await
             .unwrap();
         let hash = hash_token(&token);
@@ -752,13 +756,17 @@ mod tests {
         let bob = session_for(&state, "sub-b", "bob@example.com").await;
         let app = router(state);
 
+        // Each session's first /api/me gets that session's own profile, once.
         for (cookie, email) in [(alice, "alice@example.com"), (bob, "bob@example.com")] {
-            let response = send(&app, get("/api/me", Some(&cookie))).await;
-            assert_eq!(response.status(), StatusCode::OK);
-            let body: Value =
-                serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
-                    .unwrap();
-            assert_eq!(body["email"], email);
+            for expected in [json!(email), Value::Null] {
+                let response = send(&app, get("/api/me", Some(&cookie))).await;
+                assert_eq!(response.status(), StatusCode::OK);
+                let body: Value = serde_json::from_slice(
+                    &to_bytes(response.into_body(), usize::MAX).await.unwrap(),
+                )
+                .unwrap();
+                assert_eq!(body["profile"]["email"], expected);
+            }
         }
     }
 

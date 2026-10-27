@@ -1,7 +1,9 @@
 // A copy of the signed-in user's data on this device, so the app can show the
-// last data it fetched when the server can't be reached (offline). It's only
-// read in that case, and it's deleted whenever the user signs out (or the
-// session ends), so the next person on a shared device never sees it.
+// last data it fetched when the server can't be reached (offline). It also
+// holds the user's Google profile (name, email, picture), which the server
+// only hands over once, right after signing in. It's deleted whenever the user
+// signs out (or the session ends), so the next person on a shared device
+// never sees it.
 const STORAGE_KEY = 'solenna-snapshot';
 
 /** The per-user state keys worth keeping (see SIGNED_OUT in store.js). */

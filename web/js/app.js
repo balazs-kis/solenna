@@ -7,7 +7,7 @@ import { readSnapshot, updateSnapshot } from './snapshot.js';
 import { getState, setState, subscribe } from './store.js';
 import { applyTheme, savedTheme } from './theme.js';
 import * as account from './views/account.js';
-import { avatar } from './views/avatar.js';
+import { avatar, displayName } from './views/avatar.js';
 import * as cycle from './views/cycle.js';
 import * as login from './views/login.js';
 import * as notFound from './views/not-found.js';
@@ -122,15 +122,15 @@ function renderNav(state) {
  * ("Account" stays in the accessible name there too).
  */
 function renderAccountLink(state, item) {
-  const { name, email } = state.user;
+  const { primary, secondary } = displayName(state.user);
   return [
     avatar(state, 'small'),
     h('span', { class: 'nav-account-label' }, t(item.label)),
     h(
       'span',
       { class: 'nav-person' },
-      h('span', { class: 'nav-person-name' }, name || email),
-      name && h('span', { class: 'nav-person-email' }, email),
+      h('span', { class: 'nav-person-name' }, primary),
+      secondary && h('span', { class: 'nav-person-email' }, secondary),
     ),
   ];
 }
@@ -151,7 +151,13 @@ function renderLoadFailed(state) {
 async function loadUser() {
   setState({ loadFailed: false });
   try {
-    const user = await api('GET', '/api/me');
+    const me = await api('GET', '/api/me');
+    // The server hands over the name, email and picture only right after
+    // signing in (it doesn't store them); from then on this device's copy is
+    // used, if it belongs to the same user.
+    const kept = readSnapshot()?.user;
+    const profile = me.profile ?? (kept?.id === me.id ? kept.profile : null);
+    const user = { id: me.id, settings: me.settings, profile };
     // The account's language, or the browser's when the user chose "same as
     // device" (null). This device remembers it for the login screen.
     const language = user.settings.language;

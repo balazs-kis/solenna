@@ -87,29 +87,72 @@ The first release creates the `solenna` package on GitHub as private. Make it pu
 
 ## Backups
 
-`data/solenna.db` is the only state. It holds health data, so keep backups as private as the server itself (and encrypt any copy that leaves it).
+`data/solenna.db` is the only state. It holds health data, so the backups are encrypted to a key that is **not on the server**: if the server is ever breached, the attacker gets the current database, but not 30 days of history (including accounts deleted in that time), and the backups are safe to copy anywhere (NAS, cloud).
 
-Don't copy the file with `cp` while the app is running: SQLite in WAL mode keeps recent writes in `solenna.db-wal`, and a plain copy can be inconsistent. Use SQLite's online backup instead, which is safe while the app is running. It needs the `sqlite3` tool on the host (`sudo apt install sqlite3`):
+The backups use [age](https://age-encryption.org). On your own computer (not the server), create a key pair once and keep the key file safe, e.g. in your password manager. Without it, the backups can't be restored.
 
 ```sh
-sudo sqlite3 data/solenna.db ".backup '/var/backups/solenna/solenna-$(date +%F).db'"
+age-keygen -o solenna-backup.key    # prints the public key: age1...
 ```
 
-For example, nightly with 30 days kept, in `/etc/cron.d/solenna-backup` (adjust the repo path; `%` must be escaped in cron):
+On the server, install the tools (`sudo apt install sqlite3 age`) and save this script as `/usr/local/bin/solenna-backup` (`sudo chmod 700` it), with your public key and paths filled in:
+
+```sh
+#!/bin/sh
+# Nightly encrypted backup of the Solenna database.
+set -eu
+DB=/srv/solenna/data/solenna.db
+DIR=/var/backups/solenna
+RECIPIENT=age1...   # the public key; the private key never comes to this server
+
+umask 077
+mkdir -p "$DIR"
+# The unencrypted copy never outlives the script, even if a step fails.
+trap 'rm -f "$DIR/.backup.db"' EXIT
+# SQLite's online backup: consistent even while the app is writing. (A plain
+# cp can be inconsistent, because recent writes are in solenna.db-wal.)
+sqlite3 "$DB" ".backup '$DIR/.backup.db'"
+age -r "$RECIPIENT" -o "$DIR/solenna-$(date +%F).db.age" "$DIR/.backup.db"
+rm -f "$DIR/.backup.db"
+find "$DIR" -name 'solenna-*.db.age' -mtime +30 -delete
+```
+
+Run it nightly from `/etc/cron.d/solenna-backup` (the file needs a final newline):
 
 ```
-30 3 * * * root mkdir -p /var/backups/solenna && chmod 700 /var/backups/solenna && sqlite3 /srv/solenna/data/solenna.db ".backup '/var/backups/solenna/solenna-$(date +\%F).db'" && find /var/backups/solenna -name 'solenna-*.db' -mtime +30 -delete
+30 3 * * * root /usr/local/bin/solenna-backup
 ```
+
+Try it once by hand (`sudo /usr/local/bin/solenna-backup`) and check that a `.db.age` file appears in `/var/backups/solenna`.
 
 ### Restoring
+
+On your computer, decrypt the backup and check it:
+
+```sh
+age -d -i solenna-backup.key -o solenna.db solenna-YYYY-MM-DD.db.age
+sqlite3 solenna.db "PRAGMA integrity_check;"    # should print: ok
+```
+
+Copy `solenna.db` to the server, then:
 
 ```sh
 docker compose down
 sudo rm -f data/solenna.db-wal data/solenna.db-shm
-sudo cp /var/backups/solenna/solenna-YYYY-MM-DD.db data/solenna.db
+sudo cp solenna.db data/solenna.db
 sudo chown 10001:10001 data/solenna.db
 docker compose up -d
 ```
+
+## If the server is breached
+
+The database holds no names, emails or pictures, only a hash of each Google account ID next to the health data, and session tokens are stored only as hashes. Still, assume the attacker read everything on the server, including `.env`:
+
+1. **Take the app offline** (`docker compose down`) and fix the hole, or rebuild the server from scratch.
+2. **Rotate the Google client secret** in Google Cloud Console and put the new one in `.env`. The old one can be used to impersonate the app at Google.
+3. **End all sessions:** `sudo sqlite3 data/solenna.db "DELETE FROM sessions;"` Everyone signs in again.
+4. **Start from the published image** (`docker compose pull && docker compose up -d`), never from anything that was on the breached server.
+5. **Tell the users**, so they can decide what to do about their data. Deleting their account removes it from the database straight away, and from the backups within 30 days.
 
 ## Local development
 

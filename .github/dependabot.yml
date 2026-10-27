@@ -1,7 +1,19 @@
-# Proposes updates for the SHA-pinned actions in .github/workflows/.
+# Proposes updates for the SHA-pinned actions in .github/workflows/ and the
+# Rust crates in Cargo.lock, each kind grouped into one monthly pull request.
+# Security fixes come sooner, through GitHub's security updates (repo settings).
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
+    groups:
+      actions:
+        patterns: ['*']
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      crates:
+        patterns: ['*']

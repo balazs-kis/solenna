@@ -109,6 +109,7 @@
   "cycle.typicalCycleGaps": "Typical cycle length: the gaps between your logged periods look like missed entries (under 15 or over 60 days).",
   "cycle.typicalPeriodLength": "Typical period length until a logged period has ended.",
   "account.title": "Account",
+  "account.googleAccount": "Google account",
   "account.language": "Language",
   "account.languageDevice": "Same as device",
   "account.logout": "Sign out",

@@ -18,7 +18,12 @@ use axum::{
 };
 use serde_json::{Value, json};
 
-use crate::{auth::RateLimiter, config::Config, db::Db, error::AppError};
+use crate::{
+    auth::{PendingProfiles, RateLimiter},
+    config::Config,
+    db::Db,
+    error::AppError,
+};
 
 #[derive(Clone)]
 struct AppState {
@@ -27,6 +32,8 @@ struct AppState {
     /// Shared HTTP client for calls to Google.
     http: reqwest::Client,
     auth_limiter: Arc<RateLimiter>,
+    /// Fresh sign-ins' name, email and picture, in memory only.
+    profiles: Arc<PendingProfiles>,
 }
 
 impl AppState {
@@ -42,6 +49,7 @@ impl AppState {
                 .build()
                 .expect("HTTP client"),
             auth_limiter: Arc::new(RateLimiter::new(60, Duration::from_secs(60))),
+            profiles: Arc::default(),
         }
     }
 }
@@ -85,7 +93,6 @@ fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/health", get(health))
         .route("/api/me", get(api::me::get).delete(api::me::delete))
-        .route("/api/me/avatar", get(api::me::avatar))
         .route("/api/me/export", get(api::me::export))
         .route("/api/me/settings", put(api::me::put_settings))
         .route(
@@ -140,7 +147,8 @@ async fn security_headers(mut res: Response) -> Response {
     headers.insert(
         header::CONTENT_SECURITY_POLICY,
         HeaderValue::from_static(
-            "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+            // img-src data: for the profile picture, which the browser keeps as a data: URL.
+            "default-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
         ),
     );
     headers.insert(

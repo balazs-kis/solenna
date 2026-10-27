@@ -1,20 +1,16 @@
-//! The signed-in user's own account: profile and settings, profile picture,
-//! data export, and account deletion.
+//! The signed-in user's own account: settings, the profile handover after
+//! sign-in, data export, and account deletion.
+
+use std::time::Instant;
 
 use axum::{
     Json,
     extract::{State, rejection::JsonRejection},
-    http::{HeaderMap, StatusCode, header},
+    http::{StatusCode, header},
     response::{AppendHeaders, IntoResponse, Response},
 };
-use base64::{
-    Engine,
-    engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
-};
-use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 
 use crate::{
     AppState,
@@ -37,78 +33,49 @@ pub struct Settings {
     show_fertility: bool,
 }
 
-/// The signed-in user's profile and settings. 401 when not signed in, which is
-/// how the frontend decides to show the login screen. `avatar` says whether
-/// `GET /api/me/avatar` has a picture.
+/// The signed-in user's settings. 401 when not signed in, which is how the
+/// frontend decides to show the login screen.
+///
+/// `profile` (name, email, picture as a `data:` URL) is only there on the
+/// session's first call after signing in: the server doesn't store it, so the
+/// browser keeps it (see `PendingProfiles`). `id` lets the browser tell whether
+/// a profile it kept belongs to this user.
 pub async fn get(
     State(state): State<AppState>,
     user: CurrentUser,
 ) -> Result<Json<Value>, AppError> {
-    let (email, name, avatar, settings): (String, String, bool, Settings) = state
+    let profile = state.profiles.take(&user.session, Instant::now());
+    let user_id = user.id;
+    let settings = state
         .db
-        .call(move |conn| {
-            Ok(conn.query_row(
-                "SELECT email, name, avatar IS NOT NULL, language, track_cycle, show_fertility
-                 FROM users WHERE id = ?",
-                [user.id],
-                |row| {
-                    let settings = Settings {
-                        language: row.get(3)?,
-                        track_cycle: row.get(4)?,
-                        show_fertility: row.get(5)?,
-                    };
-                    Ok((row.get(0)?, row.get(1)?, row.get(2)?, settings))
-                },
-            )?)
-        })
+        .call(move |conn| Ok(read_settings(conn, user_id)?))
         .await?;
+    let profile = profile.map(|profile| {
+        json!({
+            "name": profile.name,
+            "email": profile.email,
+            "avatar": profile.avatar.map(|avatar| avatar.data_url()),
+        })
+    });
     Ok(Json(json!({
-        "email": email,
-        "name": name,
-        "avatar": avatar,
+        "id": user_id,
         "settings": settings,
+        "profile": profile,
     })))
 }
 
-/// The profile picture saved at sign-in; 404 if there is none. The browser
-/// revalidates it on each load (it changes when the user signs in again), and
-/// the ETag makes that a cheap 304.
-pub async fn avatar(
-    State(state): State<AppState>,
-    user: CurrentUser,
-    headers: HeaderMap,
-) -> Result<Response, AppError> {
-    let found: Option<(Vec<u8>, String)> = state
-        .db
-        .call(move |conn| {
-            Ok(conn
-                .query_row(
-                    "SELECT avatar, avatar_type FROM users WHERE id = ? AND avatar IS NOT NULL",
-                    [user.id],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
-                )
-                .optional()?)
-        })
-        .await?;
-    let Some((bytes, content_type)) = found else {
-        return Err(AppError::NotFound);
-    };
-
-    let etag = format!(
-        "\"{}\"",
-        URL_SAFE_NO_PAD.encode(&Sha256::digest(&bytes)[..12])
-    );
-    let cache = [
-        (header::ETAG, etag.clone()),
-        (header::CACHE_CONTROL, "private, no-cache".to_string()),
-    ];
-    let unchanged = headers
-        .get(header::IF_NONE_MATCH)
-        .is_some_and(|value| value.as_bytes() == etag.as_bytes());
-    if unchanged {
-        return Ok((StatusCode::NOT_MODIFIED, cache).into_response());
-    }
-    Ok((cache, [(header::CONTENT_TYPE, content_type)], bytes).into_response())
+fn read_settings(conn: &rusqlite::Connection, user_id: i64) -> rusqlite::Result<Settings> {
+    conn.query_row(
+        "SELECT language, track_cycle, show_fertility FROM users WHERE id = ?",
+        [user_id],
+        |row| {
+            Ok(Settings {
+                language: row.get(0)?,
+                track_cycle: row.get(1)?,
+                show_fertility: row.get(2)?,
+            })
+        },
+    )
 }
 
 /// Replaces all settings at once.
@@ -145,7 +112,8 @@ pub async fn put_settings(
         .map(Json)
 }
 
-/// Everything stored about the user, as one JSON document.
+/// Everything the server stores about the user, as one JSON document. The
+/// browser adds the name, email and picture it keeps (the server has none).
 pub async fn export(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -154,30 +122,13 @@ pub async fn export(
         .db
         .call(move |conn| {
             let tx = conn.transaction()?;
-            let (account, settings) = tx.query_row(
-                "SELECT email, name, created_at, language, track_cycle, show_fertility,
-                        avatar, avatar_type
-                 FROM users WHERE id = ?",
+            let created_at: i64 = tx.query_row(
+                "SELECT created_at FROM users WHERE id = ?",
                 [user.id],
-                |row| {
-                    let avatar_type: Option<String> = row.get(7)?;
-                    let avatar = row.get::<_, Option<Vec<u8>>>(6)?.map(
-                        |bytes| json!({ "type": avatar_type, "base64": STANDARD.encode(bytes) }),
-                    );
-                    let account = json!({
-                        "email": row.get::<_, String>(0)?,
-                        "name": row.get::<_, String>(1)?,
-                        "created_at": row.get::<_, i64>(2)?,
-                        "avatar": avatar,
-                    });
-                    let settings = Settings {
-                        language: row.get(3)?,
-                        track_cycle: row.get(4)?,
-                        show_fertility: row.get(5)?,
-                    };
-                    Ok((account, settings))
-                },
+                |row| row.get(0),
             )?;
+            let account = json!({ "created_at": created_at });
+            let settings = read_settings(&tx, user.id)?;
             Ok(json!({
                 "format": "solenna-export",
                 "version": 1,
@@ -271,6 +222,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn no_identity_is_stored() {
+        let state = test_state();
+        test_session(&state, "1234567890", "alice@example.com").await;
+        let dump: String = state
+            .db
+            .call(|conn| {
+                let mut statement = conn.prepare("SELECT * FROM users")?;
+                let columns = statement.column_count();
+                let rows = statement.query_map([], |row| {
+                    let mut values = Vec::new();
+                    for i in 0..columns {
+                        values.push(format!("{:?}", row.get_ref(i)?));
+                    }
+                    Ok(values.join(","))
+                })?;
+                Ok(rows.collect::<Result<Vec<_>, _>>()?.join("\n"))
+            })
+            .await
+            .unwrap();
+        assert!(!dump.contains("1234567890"), "raw sub stored: {dump}");
+        assert!(!dump.contains("alice"), "email stored: {dump}");
+    }
+
+    #[tokio::test]
     async fn new_users_get_default_settings() {
         let (app, alice, _) = app_with_users().await;
         let (status, body) = call(&app, "GET", "/api/me", &alice, None).await;
@@ -335,7 +310,15 @@ mod tests {
         let (status, export) = call(&app, "GET", "/api/me/export", &alice, None).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(export["format"], json!("solenna-export"));
-        assert_eq!(export["account"]["email"], json!("alice@example.com"));
+        // No identity on the server's side of the export: the browser adds its own.
+        assert_eq!(
+            export["account"]
+                .as_object()
+                .unwrap()
+                .keys()
+                .collect::<Vec<_>>(),
+            ["created_at"]
+        );
         assert_eq!(
             export["weights"],
             json!([{ "day": "2026-10-20", "weight_g": 72_400 }])
@@ -397,63 +380,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn serves_only_the_users_own_picture() {
-        let state = test_state();
-        let alice = test_session(&state, "sub-a", "alice@example.com").await;
-        let bob = test_session(&state, "sub-b", "bob@example.com").await;
-        state
-            .db
-            .call(|conn| {
-                conn.execute(
-                    "UPDATE users SET avatar = ?, avatar_type = 'image/png' WHERE google_sub = 'sub-a'",
-                    [b"\x89PNG\r\n\x1a\nalice".as_slice()],
-                )?;
-                Ok(())
-            })
-            .await
-            .unwrap();
-        let app = router(state);
-        let get_avatar = |cookie: &str, etag: Option<&str>| {
-            let mut request = Request::get("/api/me/avatar").header(header::COOKIE, cookie);
-            if let Some(etag) = etag {
-                request = request.header(header::IF_NONE_MATCH, etag);
-            }
-            app.clone().oneshot(request.body(Body::empty()).unwrap())
-        };
-
-        let response = get_avatar(&alice, None).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        assert_eq!(response.headers()[header::CONTENT_TYPE], "image/png");
-        let etag = response.headers()[header::ETAG]
-            .to_str()
-            .unwrap()
-            .to_string();
-        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-        assert_eq!(&bytes[..], b"\x89PNG\r\n\x1a\nalice");
-
-        let response = get_avatar(&alice, Some(&etag)).await.unwrap();
-        assert_eq!(response.status(), StatusCode::NOT_MODIFIED);
-
-        // Bob has no picture, and never gets Alice's.
-        let response = get_avatar(&bob, None).await.unwrap();
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
-
-        let (_, me) = call(&app, "GET", "/api/me", &alice, None).await;
-        assert_eq!(me["avatar"], json!(true));
-        let (_, me) = call(&app, "GET", "/api/me", &bob, None).await;
-        assert_eq!(me["avatar"], json!(false));
-        let (_, export) = call(&app, "GET", "/api/me/export", &alice, None).await;
-        assert_eq!(export["account"]["avatar"]["type"], json!("image/png"));
-        let (_, export) = call(&app, "GET", "/api/me/export", &bob, None).await;
-        assert_eq!(export["account"]["avatar"], Value::Null);
-    }
-
-    #[tokio::test]
     async fn requires_a_session() {
         let (app, _, _) = app_with_users().await;
         for (method, uri) in [
             ("GET", "/api/me"),
-            ("GET", "/api/me/avatar"),
             ("PUT", "/api/me/settings"),
             ("GET", "/api/me/export"),
             ("DELETE", "/api/me"),

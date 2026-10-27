@@ -9,7 +9,8 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use rusqlite::Connection;
+use rusqlite::{Connection, functions::FunctionFlags};
+use sha2::{Digest, Sha256};
 
 use crate::error::AppError;
 
@@ -22,6 +23,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0003_periods.sql"),
     include_str!("../migrations/0004_settings.sql"),
     include_str!("../migrations/0005_avatar.sql"),
+    include_str!("../migrations/0006_less_identity.sql"),
 ];
 
 /// Current time as Unix seconds (UTC), the format of every timestamp column.
@@ -83,6 +85,16 @@ fn configure(conn: &Connection) -> rusqlite::Result<()> {
     conn.pragma_update(None, "busy_timeout", 5000)?;
     // The scratch image has no writable /tmp for SQLite temp files.
     conn.pragma_update(None, "temp_store", "MEMORY")?;
+    // Deleted rows are overwritten with zeros instead of lingering in free
+    // pages, so a copy of the file doesn't contain deleted accounts' data.
+    conn.pragma_update(None, "secure_delete", "ON")?;
+    // sha256(text) -> blob, for migrations (SQLite has no hash function).
+    conn.create_scalar_function(
+        "sha256",
+        1,
+        FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+        |ctx| Ok(Sha256::digest(ctx.get::<String>(0)?.as_bytes()).to_vec()),
+    )?;
     Ok(())
 }
 
@@ -112,6 +124,12 @@ fn migrate(conn: &mut Connection, migrations: &[&str]) -> Result<(), String> {
             .and_then(|()| tx.commit())
             .map_err(|e| format!("migration {version} failed: {e}"))?;
         tracing::info!("applied database migration {version}");
+    }
+    if applied < latest {
+        // Migrations can rewrite tables; empty the WAL so no copy of the old
+        // pages stays behind in it.
+        conn.pragma_update_and_check(None, "wal_checkpoint", "TRUNCATE", |_| Ok(()))
+            .map_err(|e| format!("checkpoint after migrations: {e}"))?;
     }
     Ok(())
 }
@@ -151,6 +169,7 @@ mod tests {
         assert_eq!(pragma("foreign_keys"), 1);
         assert_eq!(pragma("busy_timeout"), 5000);
         assert_eq!(pragma("temp_store"), 2, "2 = MEMORY");
+        assert_eq!(pragma("secure_delete"), 1);
     }
 
     #[test]
@@ -195,7 +214,7 @@ mod tests {
         let db = Db::open_in_memory();
         let conn = db.conn.lock().unwrap();
         conn.execute(
-            "INSERT INTO users (id, google_sub, email, created_at, updated_at) VALUES (1, 'sub', 'a@example.com', 0, 0)",
+            "INSERT INTO users (id, sub_hash, created_at, updated_at) VALUES (1, 'hash', 0, 0)",
             [],
         )
         .unwrap();
@@ -211,6 +230,35 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
             .unwrap();
         assert_eq!(sessions, 0);
+    }
+
+    #[test]
+    fn migration_6_hashes_the_sub_and_drops_identity() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        configure(&conn).unwrap();
+        migrate(&mut conn, &MIGRATIONS[..5]).unwrap();
+        conn.execute(
+            "INSERT INTO users (google_sub, email, name, avatar, avatar_type, created_at, updated_at)
+             VALUES ('1234567890', 'a@example.com', 'A', x'FFD8FF', 'image/jpeg', 0, 0)",
+            [],
+        )
+        .unwrap();
+
+        migrate(&mut conn, MIGRATIONS).unwrap();
+        let hash: String = conn
+            .query_row("SELECT sub_hash FROM users", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(hash, crate::auth::sub_hash("1234567890"));
+        let columns: Vec<String> = conn
+            .prepare("SELECT name FROM pragma_table_info('users')")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        for gone in ["google_sub", "email", "name", "avatar", "avatar_type"] {
+            assert!(!columns.iter().any(|c| c == gone), "{gone} still exists");
+        }
     }
 
     #[tokio::test]

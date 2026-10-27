@@ -4,7 +4,7 @@ import { todayIso } from '../format.js';
 import { browserLanguage, saveLanguage, t } from '../i18n.js';
 import { getState, SIGNED_OUT, setState } from '../store.js';
 import { saveTheme } from '../theme.js';
-import { avatar } from './avatar.js';
+import { avatar, displayName } from './avatar.js';
 
 export const title = 'account.title';
 
@@ -122,7 +122,7 @@ export function render(container, state) {
 
 /** Who is signed in (name and picture come from Google), and signing out. */
 function renderProfile(state, view) {
-  const { name, email } = state.user;
+  const { primary, secondary } = displayName(state.user);
   return h(
     'section',
     { class: 'card profile' },
@@ -130,8 +130,8 @@ function renderProfile(state, view) {
     h(
       'div',
       { class: 'profile-text' },
-      h('p', { class: 'profile-name' }, name || email),
-      name && h('p', { class: 'muted' }, email),
+      h('p', { class: 'profile-name' }, primary),
+      secondary && h('p', { class: 'muted' }, secondary),
     ),
     state.offline
       ? h(
@@ -287,6 +287,8 @@ function removeLocalData() {
 async function exportData() {
   try {
     const data = await api('GET', '/api/me/export');
+    // The server has no name, email or picture; add this device's copy.
+    data.account = { ...getState().user.profile, ...data.account };
     const file = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(file);
     // Not attached to the page, so the router's link interception never sees the click.
