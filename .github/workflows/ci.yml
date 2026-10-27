@@ -1,0 +1,47 @@
+# The app's checks, without any Docker build: fmt, clippy and the tests.
+# Runs on every push and pull request, and release.yml runs it before
+# building an image. Actions are pinned to commit SHAs (see release.yml).
+
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  # A newer push to the same branch makes the older run pointless. Inside a
+  # release run github.workflow is "Release", so those checks get their own
+  # group (and releases are serialized by release.yml anyway).
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The same toolchain as the Dockerfile's builder image.
+      - run: |
+          rustup toolchain install 1.99 --profile minimal --component rustfmt,clippy
+          rustup default 1.99
+
+      # Downloaded crates and compiled dependencies, reused until Cargo.lock changes.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-1.99-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-1.99-
+
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      # --locked also catches a version bump whose Cargo.lock wasn't updated.
+      - run: cargo test --locked
