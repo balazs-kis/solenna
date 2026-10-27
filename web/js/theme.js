@@ -14,11 +14,25 @@ export function savedTheme() {
   }
 }
 
+let applied;
+
 /** Puts the theme on the page; the CSS reads `data-theme` on <html>. */
 export function applyTheme(theme) {
+  if (theme === applied) return;
+  applied = theme;
   if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
   else delete document.documentElement.dataset.theme;
+  updateThemeColor();
 }
+
+/** The installed app's status bar takes the page's background colour. */
+function updateThemeColor() {
+  const color = getComputedStyle(document.body).backgroundColor;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', color);
+}
+
+// "System" follows the OS, so the status bar has to follow it too.
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', updateThemeColor);
 
 export function saveTheme(theme) {
   try {

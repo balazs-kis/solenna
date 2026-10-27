@@ -2,7 +2,8 @@ import { api } from './api.js';
 import { h } from './dom.js';
 import { activate, browserLanguage, detectLanguage, saveLanguage, t } from './i18n.js';
 import { startRouter } from './router.js';
-import { setState, subscribe } from './store.js';
+import { readSnapshot, updateSnapshot } from './snapshot.js';
+import { getState, setState, subscribe } from './store.js';
 import { applyTheme, savedTheme } from './theme.js';
 import * as account from './views/account.js';
 import { avatar } from './views/avatar.js';
@@ -31,14 +32,16 @@ let loadedView = null;
 
 /**
  * `state.user` is undefined while loading, null when signed out, and the
- * profile object when signed in.
+ * profile object when signed in. `state.offline` is true while the device is
+ * offline or the server can't be reached; the app then shows the last data it
+ * fetched and disables everything that saves.
  */
 function render(state) {
   activate(state.lang);
   applyTheme(state.theme);
 
   if (state.user === undefined) {
-    root.replaceChildren(state.loadFailed ? renderLoadFailed() : '');
+    root.replaceChildren(state.loadFailed ? renderLoadFailed(state) : '');
     return;
   }
 
@@ -52,6 +55,7 @@ function render(state) {
 
   const main = h('main', { class: signedIn ? 'main' : 'main main-centered', id: 'main' });
   view.render(main, state);
+  if (state.offline) main.prepend(renderOfflineBanner(state));
   root.replaceChildren(...(signedIn ? [renderNav(state), main] : [main]));
 
   if (state.path !== renderedPath && renderedPath !== null) {
@@ -63,8 +67,9 @@ function render(state) {
   renderedPath = state.path;
 
   // A view's optional load() fetches its data each time the view becomes
-  // active. Last, because it calls setState, which renders again.
-  if (signedIn && view !== loadedView) {
+  // active (not while offline: the screen shows the data it already has).
+  // Last, because it calls setState, which renders again.
+  if (signedIn && view !== loadedView && !state.offline) {
     loadedView = view;
     view.load?.();
   }
@@ -129,14 +134,14 @@ function renderAccountLink(state, item) {
   ];
 }
 
-function renderLoadFailed() {
+function renderLoadFailed(state) {
   return h(
     'main',
     { class: 'main main-centered' },
     h(
       'div',
       { class: 'card login-card' },
-      h('p', { role: 'alert' }, t('app.loadFailed')),
+      h('p', { role: 'alert' }, t(state.offline ? 'app.offlineNoData' : 'app.loadFailed')),
       h('button', { type: 'button', class: 'button', onclick: loadUser }, t('app.retry')),
     ),
   );
@@ -150,11 +155,52 @@ async function loadUser() {
     // device" (null). This device remembers it for the login screen.
     const language = user.settings.language;
     saveLanguage(language);
-    setState({ user, lang: language ?? browserLanguage() });
+    setState({ user, lang: language ?? browserLanguage(), offline: false });
   } catch (error) {
-    // A 401 already set user to null (login screen); anything else is a failure to load.
-    if (error.status !== 401) setState({ loadFailed: true });
+    // A 401 already set user to null (login screen).
+    if (error.status === 401) return;
+    // The server can't be reached: show the last data this device fetched, if any.
+    const snapshot = readSnapshot();
+    setState(snapshot ? { ...snapshot, offline: true } : { loadFailed: true, offline: true });
   }
+}
+
+/** Back online: fetch everything fresh, including the current screen's data. */
+async function reconnect() {
+  if (getState().reconnecting) return; // A retry is already running.
+  loadedView = null;
+  setState({ reconnecting: true });
+  await loadUser();
+  setState({ reconnecting: false });
+}
+
+/**
+ * The browser can't tell when our server is reachable again (its 'online'
+ * event only means the device has a network), so the user can retry by hand.
+ */
+function renderOfflineBanner(state) {
+  return h(
+    'div',
+    { class: 'offline-banner' },
+    // Signed out (e.g. after removing the data offline), there's no data to talk about.
+    h('p', { role: 'status' }, t(state.user ? 'app.offline' : 'app.offlineSignIn')),
+    h(
+      'button',
+      // Stays enabled while retrying (a disabled button would lose focus); reconnect() ignores repeats.
+      { type: 'button', id: 'offline-retry', class: 'button secondary small', onclick: reconnect },
+      t(state.reconnecting ? 'app.retrying' : 'app.retry'),
+    ),
+  );
+}
+
+/**
+ * Not on the usual dev hosts: `cargo run` serves web/ from disk, and a cached
+ * shell would hide every edit. To test offline locally, use http://127.0.0.2:8080.
+ */
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator) || ['localhost', '127.0.0.1'].includes(location.hostname)) return;
+  // Without it the app still works online, so a failure needs no handling.
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
 
 /** Reads and removes `?auth_error=` (set by the server after a failed sign-in). */
@@ -166,5 +212,20 @@ function takeAuthError() {
 
 const authError = takeAuthError();
 subscribe(render);
-setState({ path: startRouter(), lang: detectLanguage(), theme: savedTheme(), authError });
+subscribe(updateSnapshot);
+window.addEventListener('offline', () => setState({ offline: true }));
+window.addEventListener('online', reconnect);
+// Also retry when the app comes back to the foreground: an unreachable server
+// (rather than a lost connection) sends no 'online' event.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && getState().offline) reconnect();
+});
+setState({
+  path: startRouter(),
+  lang: detectLanguage(),
+  theme: savedTheme(),
+  offline: !navigator.onLine,
+  authError,
+});
 loadUser();
+registerServiceWorker();

@@ -54,7 +54,11 @@ export function render(container, state) {
     );
     return;
   }
-  if (!state.periods) return; // Still loading.
+  if (!state.periods) {
+    // Still loading, or offline with nothing saved yet.
+    if (state.offline) container.append(h('p', { class: 'card muted' }, t('app.offlineNoData')));
+    return;
+  }
 
   const today = todayIso();
   const showFertility = state.user.settings.show_fertility;
@@ -108,7 +112,13 @@ function renderQuickAction(analysis) {
       h('span', { class: 'quick-action-label' }, t('cycle.periodDay', { day: periodDay })),
       h(
         'button',
-        { type: 'button', id: 'quick-action', class: 'button', onclick: () => endPeriod(last, today) },
+        {
+          type: 'button',
+          id: 'quick-action',
+          class: 'button',
+          disabled: getState().offline,
+          onclick: () => endPeriod(last, today),
+        },
         t('cycle.stoppedToday'),
       ),
     );
@@ -120,7 +130,13 @@ function renderQuickAction(analysis) {
     { class: 'card quick-action' },
     h(
       'button',
-      { type: 'button', id: 'quick-action', class: 'button', onclick: () => startPeriod(today) },
+      {
+        type: 'button',
+        id: 'quick-action',
+        class: 'button',
+        disabled: getState().offline,
+        onclick: () => startPeriod(today),
+      },
       h('span', { class: 'icon icon-drop', 'aria-hidden': 'true' }),
       t('cycle.startedToday'),
     ),
@@ -206,6 +222,7 @@ function renderFlowPicker(period, day, current) {
             id: `flow-${level}`,
             class: `flow-option flow-${level}`,
             'aria-pressed': String(current === level),
+            disabled: getState().offline,
             onclick: () => setFlow(period, day, current === level ? null : level, `flow-${level}`),
           },
           h('span', { class: 'flow-drops', 'aria-hidden': 'true' }, '●'.repeat(level)),
@@ -218,14 +235,20 @@ function renderFlowPicker(period, day, current) {
 
 function renderDayActions(day, period, analysis, view) {
   const { today } = analysis;
-  const periods = getState().periods;
+  const { periods, offline } = getState();
   const actions = [];
 
   if (!period) {
     actions.push(
       h(
         'button',
-        { type: 'button', id: 'day-start', class: 'button', onclick: () => startPeriod(day) },
+        {
+          type: 'button',
+          id: 'day-start',
+          class: 'button',
+          disabled: offline,
+          onclick: () => startPeriod(day),
+        },
         t('cycle.startedThisDay'),
       ),
     );
@@ -240,7 +263,13 @@ function renderDayActions(day, period, analysis, view) {
     actions.push(
       h(
         'button',
-        { type: 'button', id: 'day-end', class: 'button secondary', onclick: () => endPeriod(before, day) },
+        {
+          type: 'button',
+          id: 'day-end',
+          class: 'button secondary',
+          disabled: offline,
+          onclick: () => endPeriod(before, day),
+        },
         t('cycle.stoppedThisDay'),
       ),
     );
@@ -259,6 +288,7 @@ function renderDayActions(day, period, analysis, view) {
                 type: 'button',
                 id: 'confirm-delete',
                 class: 'button danger small',
+                disabled: offline,
                 onclick: () => deletePeriod(period),
               },
               t('cycle.delete'),
@@ -271,7 +301,13 @@ function renderDayActions(day, period, analysis, view) {
           )
         : h(
             'button',
-            { type: 'button', id: 'day-delete', class: 'link-button', onclick: () => askDelete(period) },
+            {
+              type: 'button',
+              id: 'day-delete',
+              class: 'link-button',
+              disabled: offline,
+              onclick: () => askDelete(period),
+            },
             t('cycle.deletePeriod'),
           ),
     );

@@ -42,6 +42,8 @@ export function load() {
 export function render(container, state) {
   const view = state.accountUi ?? {};
   const settings = state.user.settings;
+  // Everything here saves to the server, except the theme.
+  const offline = state.offline;
 
   container.append(
     h('h1', { tabindex: '-1' }, t('account.title')),
@@ -60,7 +62,7 @@ export function render(container, state) {
           h('label', { for: 'language' }, t('account.language')),
           h(
             'select',
-            { id: 'language', onchange: (event) => changeLanguage(event.target.value) },
+            { id: 'language', disabled: offline, onchange: (event) => changeLanguage(event.target.value) },
             languageOptions.map(({ code, label }) =>
               h('option', { value: code, selected: (settings.language ?? 'device') === code }, t(label)),
             ),
@@ -89,6 +91,7 @@ export function render(container, state) {
           label: t('account.trackCycle'),
           hint: t('account.trackCycleHint'),
           checked: settings.track_cycle,
+          disabled: offline,
           onchange: (checked) => saveSettings({ track_cycle: checked }),
         }),
         settings.track_cycle &&
@@ -97,11 +100,12 @@ export function render(container, state) {
             label: t('account.showFertility'),
             hint: t('account.showFertilityHint'),
             checked: settings.show_fertility,
+            disabled: offline,
             onchange: (checked) => saveSettings({ show_fertility: checked }),
           }),
       ),
-      renderDataSection(view),
-      renderDeleteSection(view),
+      renderDataSection(view, offline),
+      renderDeleteSection(view, offline),
     ),
   );
 }
@@ -119,13 +123,20 @@ function renderProfile(state, view) {
       h('p', { class: 'profile-name' }, name || email),
       name && h('p', { class: 'muted' }, email),
     ),
-    h('button', { type: 'button', id: 'logout', class: 'button secondary', onclick: logout }, t('account.logout')),
-    view.logoutFailed && h('p', { class: 'error profile-error', role: 'alert' }, t('account.logoutFailed')),
+    state.offline
+      ? h(
+          'button',
+          { type: 'button', id: 'remove-local', class: 'button secondary', onclick: removeLocalData },
+          t('account.removeLocal'),
+        )
+      : h('button', { type: 'button', id: 'logout', class: 'button secondary', onclick: logout }, t('account.logout')),
+    state.offline && h('p', { class: 'muted profile-note' }, t('account.removeLocalHint')),
+    view.logoutFailed && h('p', { class: 'error profile-note', role: 'alert' }, t('account.logoutFailed')),
   );
 }
 
 /** A checkbox with its label and a hint below; the label is the 44px touch target. */
-function toggle({ id, label, hint, checked, onchange }) {
+function toggle({ id, label, hint, checked, disabled, onchange }) {
   return h(
     'div',
     { class: 'toggle' },
@@ -133,6 +144,7 @@ function toggle({ id, label, hint, checked, onchange }) {
       type: 'checkbox',
       id,
       checked,
+      disabled,
       'aria-describedby': `${id}-hint`,
       onchange: (event) => onchange(event.target.checked),
     }),
@@ -141,7 +153,7 @@ function toggle({ id, label, hint, checked, onchange }) {
   );
 }
 
-function renderDataSection(view) {
+function renderDataSection(view, offline) {
   return h(
     'section',
     { class: 'card stack' },
@@ -151,13 +163,17 @@ function renderDataSection(view) {
     h(
       'div',
       { class: 'actions' },
-      h('button', { type: 'button', id: 'export', class: 'button secondary', onclick: exportData }, t('account.export')),
+      h(
+        'button',
+        { type: 'button', id: 'export', class: 'button secondary', disabled: offline, onclick: exportData },
+        t('account.export'),
+      ),
     ),
   );
 }
 
 /** Kept apart at the very bottom, with a confirmation step. */
-function renderDeleteSection(view) {
+function renderDeleteSection(view, offline) {
   return h(
     'section',
     { class: 'card stack danger-zone' },
@@ -171,7 +187,13 @@ function renderDeleteSection(view) {
           h('span', {}, t('account.deleteConfirm')),
           h(
             'button',
-            { type: 'button', id: 'confirm-delete-account', class: 'button danger small', onclick: deleteAccount },
+            {
+              type: 'button',
+              id: 'confirm-delete-account',
+              class: 'button danger small',
+              disabled: offline,
+              onclick: deleteAccount,
+            },
             t('account.deleteConfirmButton'),
           ),
           h('button', { type: 'button', class: 'button secondary small', onclick: cancelDelete }, t('account.cancel')),
@@ -181,7 +203,7 @@ function renderDeleteSection(view) {
           { class: 'actions' },
           h(
             'button',
-            { type: 'button', id: 'delete-account', class: 'button danger', onclick: askDelete },
+            { type: 'button', id: 'delete-account', class: 'button danger', disabled: offline, onclick: askDelete },
             t('account.deleteAccount'),
           ),
         ),
@@ -239,6 +261,16 @@ async function logout() {
   } catch {
     setUi({ logoutFailed: true });
   }
+}
+
+/**
+ * Offline, signing out can't reach the server, so this only drops the user's
+ * data from this device (the snapshot goes with SIGNED_OUT). The session
+ * cookie stays, so the next time the server is reachable, the app opens the
+ * account again; the hint says so.
+ */
+function removeLocalData() {
+  setState(SIGNED_OUT);
 }
 
 /** Downloads everything the server stores about the user as a JSON file. */

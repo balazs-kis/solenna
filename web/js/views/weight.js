@@ -61,7 +61,11 @@ export function render(container, state) {
     );
     return;
   }
-  if (!state.weights) return; // Still loading; it's quick, so no spinner.
+  if (!state.weights) {
+    // Still loading (it's quick, so no spinner), or offline with nothing saved yet.
+    if (state.offline) container.append(h('p', { class: 'card muted' }, t('app.offlineNoData')));
+    return;
+  }
 
   const range = ranges.find((r) => r.id === (view.range ?? DEFAULT_RANGE));
   const today = todayIso();
@@ -136,7 +140,7 @@ function renderForm(view) {
     h(
       'div',
       { class: 'actions' },
-      h('button', { type: 'submit', class: 'button' }, t('weight.save')),
+      h('button', { type: 'submit', class: 'button', disabled: getState().offline }, t('weight.save')),
       editing &&
         h('button', { type: 'button', class: 'button secondary', onclick: cancelEdit }, t('weight.cancel')),
     ),
@@ -215,6 +219,7 @@ function renderEntry(entry, view) {
               type: 'button',
               id: 'confirm-delete',
               class: 'button danger small',
+              disabled: getState().offline,
               onclick: () => remove(entry.day),
             },
             t('weight.delete'),
@@ -242,6 +247,7 @@ function renderEntry(entry, view) {
               type: 'button',
               id: `delete-${entry.day}`,
               class: 'link-button',
+              disabled: getState().offline,
               'aria-label': t('weight.deleteLabel', { date }),
               onclick: () => askDelete(entry.day),
             },

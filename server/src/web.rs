@@ -55,9 +55,12 @@ fn file_response(file: EmbeddedFile) -> Response {
 mod tests {
     use std::{
         collections::{BTreeMap, BTreeSet},
+        fmt::Write,
         fs,
         path::{Path, PathBuf},
     };
+
+    use sha2::{Digest, Sha256};
 
     fn web_dir() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../web")
@@ -105,6 +108,86 @@ mod tests {
             .skip(1)
             .filter_map(|rest| rest.split_once('}').map(|(name, _)| name))
             .collect()
+    }
+
+    /// Files in `dir`, as paths from the web root (`/js/app.js`).
+    fn web_files(dir: &Path, out: &mut BTreeSet<String>) {
+        for entry in fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                web_files(&path, out);
+            } else {
+                let relative = path.strip_prefix(web_dir()).unwrap();
+                out.insert(format!(
+                    "/{}",
+                    relative.to_string_lossy().replace('\\', "/")
+                ));
+            }
+        }
+    }
+
+    /// Installed apps only update when sw.js changes, so its VERSION is a hash
+    /// of everything in web/ (sw.js without its VERSION line included).
+    #[test]
+    fn service_worker_version_matches_web_files() {
+        let mut files = BTreeSet::new();
+        web_files(&web_dir(), &mut files);
+        let mut hasher = Sha256::new();
+        for file in &files {
+            let content = fs::read(web_dir().join(&file[1..])).unwrap();
+            let content = if file == "/sw.js" {
+                let text = String::from_utf8(content).unwrap();
+                let lines: Vec<&str> = text
+                    .lines()
+                    .filter(|line| !line.starts_with("const VERSION"))
+                    .collect();
+                lines.join("\n").into_bytes()
+            } else {
+                content
+            };
+            hasher.update(file.as_bytes());
+            hasher.update((content.len() as u64).to_le_bytes());
+            hasher.update(&content);
+        }
+        let version = hasher.finalize()[..6]
+            .iter()
+            .fold(String::new(), |mut hex, byte| {
+                let _ = write!(hex, "{byte:02x}");
+                hex
+            });
+
+        let sw = fs::read_to_string(web_dir().join("sw.js")).unwrap();
+        let expected = format!("const VERSION = '{version}';");
+        assert!(
+            sw.lines().any(|line| line == expected),
+            "web/ changed: set `{expected}` in web/sw.js"
+        );
+    }
+
+    #[test]
+    fn service_worker_caches_every_web_file() {
+        let sw = fs::read_to_string(web_dir().join("sw.js")).unwrap();
+        let shell = sw
+            .split("const SHELL = [")
+            .nth(1)
+            .unwrap()
+            .split("];")
+            .next()
+            .unwrap();
+        let listed: BTreeSet<String> = shell
+            .lines()
+            .map(|line| line.trim().trim_end_matches(',').trim_matches('\''))
+            .filter(|path| !path.is_empty())
+            .map(str::to_string)
+            .collect();
+
+        let mut files = BTreeSet::new();
+        web_files(&web_dir(), &mut files);
+        files.remove("/sw.js");
+        assert_eq!(
+            listed, files,
+            "SHELL in web/sw.js must list every file in web/"
+        );
     }
 
     #[test]

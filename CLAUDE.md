@@ -53,6 +53,7 @@ web/               static frontend, served as-is
     format.js      calendar-day math, Intl date / day-count / kg formatting
     cycle-math.js  cycle predictions (pure functions, no DOM)
     store.js       state + subscribe
+    snapshot.js    this device's copy of the user's data, for offline
     i18n.js        t() + language selection
     theme.js       theme setting (System / Light / Dark, per device)
     theme-init.js  classic script: applies the saved theme before first paint
@@ -105,6 +106,7 @@ All of this lives in `server/src/auth.rs`.
 This app stores health data. Treat it accordingly.
 
 - Logs must never contain health values, tokens, cookies, or OAuth codes. Logging user IDs and routes is fine.
+- **Data on the device:** `snapshot.js` keeps a copy of the signed-in user's data (`user`, `weights`, `periods`) in localStorage, so the app can show it offline. It's only read when the server can't be reached, and it's deleted as soon as the state is signed out (logout, any 401, account deletion). Signing out needs the server, so offline the Account screen offers "Remove my data from this device" instead: it clears the snapshot, but the session cookie (HttpOnly) stays, so the app opens the account again once the server is reachable. Its hint says so. Nothing else about the user is stored in the browser.
 - Users can **export all their data** (`GET /api/me/export`, JSON) and **delete their account** (`DELETE /api/me`), which hard-deletes the user row and, through `ON DELETE CASCADE`, all their other rows. The export includes the profile picture (base64). Every new per-user table needs `ON DELETE CASCADE` on its `user_id` and a place in the export.
 - Set security headers on every response: a strict CSP (`default-src 'self'`), `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`.
 - HTTPS is terminated by a reverse proxy in front of the container. The app itself speaks plain HTTP and trusts `SOLENNA_BASE_URL` for building redirect URLs.
@@ -157,8 +159,11 @@ The transparent source has near-invisible stray pixels (alpha < 8) around the ti
 
 ### PWA / offline
 - Offline support covers the **app shell only**. The app opens offline and shows the last data it fetched, but saving requires a connection. Show a clear offline state and disable save buttons while offline.
-- `sw.js` caches the static shell (cache-first) and never caches `/api/*` responses (always network).
-- `sw.js` has a `VERSION` constant. **Bump it whenever any file in `web/` changes**, or users will be stuck on stale files.
+- `sw.js` precaches the static shell on install and serves it cache-first. App routes (navigations) get the cached `index.html`. It never touches `/api/*` or `/auth/*` (always network). Its `SHELL` list must name every file in `web/`; a `cargo test` checks it, so add new files there.
+- `sw.js` has a `VERSION` constant: a hash of everything in `web/`. Installed apps only update when `sw.js` changes, so **any change in `web/` needs a new `VERSION`**. `cargo test` enforces it: it fails and prints the value to put in `sw.js`. A new version activates right away (`skipWaiting`) and deletes the old cache; open pages keep running the code they loaded and pick up the new files on the next start.
+- **Offline state:** `state.offline` is true while the device is offline or the server can't be reached. When `/api/me` can't be reached, the app shows the snapshot (see Privacy) with an offline banner; without a snapshot it says there's nothing to show yet. Views don't run `load()` while offline. Every control that saves gets `disabled: state.offline`; reading controls (calendar navigation, chart ranges, the theme) stay enabled. Coming back online, returning to the foreground while offline, or the banner's "Try again" button fetches everything again. The browser's `online` event only means the device has a network, not that our server is reachable, so the button is the only way to recover while the app stays open.
+- **Dev:** the service worker isn't registered on `localhost` / `127.0.0.1`, so `cargo run` keeps serving fresh files. To test the service worker locally, open `http://127.0.0.2:8080`, then unregister it and clear its cache afterwards.
+- `theme-color` follows the page background (including the theme override), so an installed app's status bar matches. The manifest's colours are the light theme's, used only for the splash screen.
 
 ## Config
 
