@@ -1,6 +1,6 @@
 [package]
 name = "solenna"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 # Minimum supported Rust: rusqlite 0.41 needs 1.89.
 rust-version = "1.89"

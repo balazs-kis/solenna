@@ -187,6 +187,8 @@ For local dev, the app also reads `./.env` from the working directory, so `cargo
 - **Release:** `web/` is embedded into the binary with `rust-embed`.
 - **Dockerfile:** multi-stage, using `cargo-chef` for dependency caching. It builds on `rust:<version>-alpine`, which produces a static musl binary natively for the host architecture, and runs it on `scratch` as uid 10001. TLS uses rustls (aws-lc-rs) with the platform certificate verifier. The Dockerfile copies Alpine's `ca-certificates.crt` into the image for it, so CA updates arrive with each rebuild. Keep the builder image version at or above `rust-version` in `server/Cargo.toml`.
 - The SQLite file lives on a volume mounted at `SOLENNA_DATA_DIR`. It is the only state.
+- **Releases:** `.github/workflows/release.yml` builds the image and pushes it to `ghcr.io/balazs-kis/solenna` when `version` in `server/Cargo.toml` has no `v<version>` git tag yet. It runs fmt, clippy and `cargo test --locked` first, and tags the commit after a successful push. Only the current head of `main` is released, also for manual runs. Actions are pinned to full commit SHAs (version in a comment); Dependabot proposes updates. Keep new actions pinned the same way. Bump the version (and commit the updated `Cargo.lock`) to release; nothing else triggers one. The server never builds: `compose.yaml` only pulls the image.
+- **Hosting:** `compose.yaml` publishes the app on `127.0.0.1:37510` (localhost only) for Caddy running on the host, which terminates HTTPS. The README has the deploy, backup (SQLite `.backup`, never a plain copy while running) and restore steps. Use `solenna.example.com` in docs, never the real domain.
 
 ## Testing
 

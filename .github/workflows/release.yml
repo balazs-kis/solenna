@@ -1,0 +1,120 @@
+# Publishes the app image to GHCR (ghcr.io/<owner>/<repo>) when the version is bumped.
+#
+# The version is `version` in server/Cargo.toml. If git tag v<version> doesn't
+# exist yet, this runs the checks, builds and pushes the image tagged
+# <version>, latest and sha-<commit>, then creates the tag. Otherwise it does
+# nothing. The server only pulls the image (compose.yaml); nothing is built there.
+#
+# Actions are pinned to commit SHAs (the image job can push to GHCR and the
+# repo); Dependabot (.github/dependabot.yml) proposes updates.
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+    # A release always changes the version, so other pushes don't need to start this.
+    paths:
+      - server/Cargo.toml
+      - .github/workflows/release.yml
+  # Run by hand, e.g. to retry after a failed build (it still skips an existing version).
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  version:
+    # Only main is released, also when run by hand (the form offers any branch).
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release: ${{ steps.version.outputs.release }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - id: version
+        run: |
+          version=$(grep -m1 '^version = ' server/Cargo.toml | cut -d '"' -f 2)
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::server/Cargo.toml version '$version' isn't MAJOR.MINOR.PATCH"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # Re-running an old run checks out its old commit; releasing that
+          # would replace a newer :latest. Only the current head of main is released.
+          head=$(git ls-remote origin refs/heads/main | cut -f 1)
+          if [ "$head" != "$GITHUB_SHA" ]; then
+            echo "::notice::$GITHUB_SHA is no longer the head of main; not releasing."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          elif git ls-remote --exit-code --tags origin "refs/tags/v$version" > /dev/null; then
+            echo "v$version is already released; nothing to do."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Releasing v$version."
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  checks:
+    needs: version
+    if: needs.version.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The same toolchain as the Dockerfile's builder image.
+      - run: |
+          rustup toolchain install 1.99 --profile minimal --component rustfmt,clippy
+          rustup default 1.99
+
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      # --locked also catches a version bump whose Cargo.lock wasn't updated.
+      - run: cargo test --locked
+
+  image:
+    needs: [version, checks]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release tag
+      packages: write # push to GHCR with the built-in GITHUB_TOKEN
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=${{ needs.version.outputs.version }}
+            type=raw,value=latest
+            type=sha,format=short
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Reuse the dependency layers (cargo-chef) between runs.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Last, so a failed build leaves the version unreleased and a re-run tries again.
+      - run: |
+          git tag "v${{ needs.version.outputs.version }}"
+          git push origin "v${{ needs.version.outputs.version }}"
