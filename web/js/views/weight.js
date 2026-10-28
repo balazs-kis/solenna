@@ -2,7 +2,7 @@ import { api } from '../api.js';
 import { h } from '../dom.js';
 import { addDays, formatDay, formatKg, todayIso } from '../format.js';
 import { t } from '../i18n.js';
-import { getState, setState } from '../store.js';
+import { getState, remember, setState } from '../store.js';
 import { renderChart } from './weight-chart.js';
 
 export const title = 'weight.title';
@@ -17,9 +17,11 @@ const DEFAULT_RANGE = '90d';
 
 // State: `state.weights` is the user's data (undefined until loaded, sorted by
 // day). `state.weightUi` holds this screen's UI state:
-//   range, edit ({ day, weight_g } being edited), draft (form values kept after
-//   a failed save), error (i18n key of the save error), confirmDelete (day),
-//   deleteError, loadFailed. Only `range` survives leaving the screen.
+//   range, edit ({ day, weight_g } being edited), draft ({ day, kg } as typed,
+//   kept with remember() so re-renders don't reset the form; `day` is null
+//   unless the user picked one, so the form keeps following today), error (i18n key
+//   of the save error), confirmDelete (day), deleteError, loadFailed. `range`,
+//   `edit` and `draft` survive leaving the screen.
 
 function ui() {
   return getState().weightUi ?? {};
@@ -29,18 +31,22 @@ function setUi(patch) {
   setState({ weightUi: { ...ui(), ...patch } });
 }
 
-/** Called by the app whenever this screen becomes active. */
+/**
+ * Called by the app whenever this screen becomes active (and after
+ * reconnecting). A half-typed entry stays.
+ */
 export async function load() {
-  setUi({
-    loadFailed: false,
-    edit: null,
-    draft: null,
-    error: null,
-    confirmDelete: null,
-    deleteError: false,
-  });
+  setUi({ loadFailed: false, error: null, confirmDelete: null, deleteError: false });
+  const before = getState().weights;
   try {
-    setState({ weights: await api('GET', '/api/weights') });
+    const weights = await api('GET', '/api/weights');
+    // Signed out meanwhile, or a save changed the list after this request
+    // started: this answer is stale.
+    if (!getState().user || getState().weights !== before) return;
+    // An entry being edited may have been deleted elsewhere.
+    const edit = ui().edit;
+    const editGone = edit && !weights.some((entry) => entry.day === edit.day);
+    setState({ weights, ...(editGone && { weightUi: { ...ui(), edit: null } }) });
   } catch (error) {
     if (error.status !== 401) setUi({ loadFailed: true });
   }
@@ -90,14 +96,14 @@ export function render(container, state) {
 
 function renderForm(view) {
   const editing = view.edit;
-  const values = view.draft ?? {
-    day: editing?.day ?? todayIso(),
-    kg: editing ? (editing.weight_g / 1000).toFixed(1) : '',
+  const values = {
+    day: view.draft?.day ?? editing?.day ?? todayIso(),
+    kg: view.draft?.kg ?? (editing ? (editing.weight_g / 1000).toFixed(1) : ''),
   };
 
   return h(
     'form',
-    { class: 'card stack', onsubmit: save },
+    { class: 'card stack', onsubmit: save, oninput: keepDraft },
     h('h2', {}, t(editing ? 'weight.editTitle' : 'weight.addTitle')),
     h(
       'div',
@@ -264,6 +270,21 @@ function renderEntry(entry, view) {
   );
 }
 
+/**
+ * The form's values as a draft. The day only counts if the user picked one:
+ * an untouched date field shows today, and must keep doing so tomorrow.
+ */
+function draftOf(form) {
+  const { day, kg } = form.elements;
+  const picked = ui().edit || day.value !== todayIso();
+  return { day: picked ? day.value : null, kg: kg.value };
+}
+
+/** Keeps the typed values in the state, without a re-render that would interrupt typing. */
+function keepDraft(event) {
+  remember({ weightUi: { ...ui(), draft: draftOf(event.currentTarget) } });
+}
+
 async function save(event) {
   event.preventDefault();
   const form = event.currentTarget;
@@ -273,6 +294,7 @@ async function save(event) {
 
   try {
     const saved = await api('PUT', `/api/weights/${day}`, { weight_g });
+    if (!getState().user) return; // Signed out meanwhile.
     const weights = getState()
       .weights.filter((entry) => entry.day !== saved.day)
       .concat(saved)
@@ -281,11 +303,11 @@ async function save(event) {
     // Ready for the next entry; the submit button was replaced by the re-render.
     document.getElementById('weight-kg')?.focus();
   } catch (error) {
-    if (error.status === 401) return;
+    if (error.status === 401 || !getState().user) return;
     // Keep what the user typed; the re-render would otherwise reset the form.
     // A 400 means the input itself was rejected, so "try again" wouldn't help.
     const message = error.status === 400 ? 'weight.invalid' : 'weight.saveFailed';
-    setUi({ draft: { day, kg }, error: message });
+    setUi({ draft: draftOf(form), error: message });
   }
 }
 
@@ -315,10 +337,11 @@ async function remove(day) {
   } catch (error) {
     // 404: already gone (e.g. deleted on another device), which is what we wanted.
     if (error.status !== 404) {
-      if (error.status !== 401) setUi({ deleteError: true });
+      if (error.status !== 401 && getState().user) setUi({ deleteError: true });
       return;
     }
   }
+  if (!getState().user) return; // Signed out meanwhile.
   const weights = getState().weights.filter((entry) => entry.day !== day);
   const editingThis = ui().edit?.day === day;
   setState({

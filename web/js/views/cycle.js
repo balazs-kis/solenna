@@ -32,8 +32,13 @@ function setUi(patch) {
 /** Called by the app whenever this screen becomes active. */
 export async function load() {
   setUi({ loadFailed: false, error: null, confirmDelete: null });
+  const before = getState().periods;
   try {
-    setState({ periods: await api('GET', '/api/periods') });
+    const periods = await api('GET', '/api/periods');
+    // Signed out meanwhile, or a save changed the list after this request
+    // started: this answer is stale.
+    if (!getState().user || getState().periods !== before) return;
+    setState({ periods });
   } catch (error) {
     if (error.status !== 401) setUi({ loadFailed: true });
   }
@@ -448,40 +453,80 @@ function eventCard(kind, icon, heading, text) {
 
 // --- Actions -----------------------------------------------------------------
 // Every change saves a whole period (the API replaces it), then updates the
-// local list from the server's answer.
+// local list from the server's answer. Changes run one after another, and each
+// starts from the list as the previous one left it: two quick taps (flow on two
+// days, or "started today" twice) would otherwise each send the old period,
+// and the slower request would undo the faster one.
 
-async function startPeriod(day) {
-  const periods = getState().periods;
-  const today = todayIso();
-  // A start in the past gets an assumed end (the average length, adjustable
-  // with "stopped this day"); only a recent one stays ongoing.
-  const { stats } = analyzeCycle(periods, today);
-  const body = { start_day: day, end_day: assumedEnd(day, periods, stats.periodLength, today), flow: [] };
-  await save(async () => {
-    const created = await api('POST', '/api/periods', body);
-    return [...periods, created];
-  }, day);
+let saving = Promise.resolve();
+// Changes waiting or running, and whether one of them failed: a later success
+// in the same burst of taps must not hide that error.
+let pending = 0;
+let failedInBurst = false;
+
+function queue(task) {
+  pending++;
+  // save() reports its own errors; the catch only keeps an unexpected one
+  // from stopping every later change.
+  saving = saving
+    .then(task)
+    .catch((error) => console.error(error))
+    .finally(() => {
+      pending--;
+      if (pending === 0) failedInBurst = false;
+    });
 }
 
-async function endPeriod(period, day) {
-  const flow = period.flow.filter((f) => f.day <= day);
-  await savePeriod({ ...period, end_day: day, flow }, day);
+/** The period with this id as it is now (after earlier queued changes), if it still exists. */
+function current(period) {
+  return getState().periods?.find((p) => p.id === period.id);
+}
+
+function startPeriod(day) {
+  queue(async () => {
+    const periods = getState().periods;
+    if (!periods) return; // Signed out meanwhile.
+    const today = todayIso();
+    const analysis = analyzeCycle(periods, today);
+    if (analysis.periodOn(day)) return; // A repeated tap: it has already started.
+    // A start in the past gets an assumed end (the average length, adjustable
+    // with "stopped this day"); only a recent one stays ongoing.
+    const end = assumedEnd(day, periods, analysis.stats.periodLength, today);
+    const body = { start_day: day, end_day: end, flow: [] };
+    await save(async () => {
+      const created = await api('POST', '/api/periods', body);
+      // A reload that finished meanwhile may already list it.
+      return (periods) => [...periods.filter((p) => p.id !== created.id), created];
+    }, day);
+  });
+}
+
+function endPeriod(period, day) {
+  queue(async () => {
+    const latest = current(period);
+    if (!latest) return;
+    const flow = latest.flow.filter((f) => f.day <= day);
+    await savePeriod({ ...latest, end_day: day, flow }, day);
+  });
 }
 
 /** Sets (or with `level` null, clears) the strength of one day; focus returns to `focusId`. */
-async function setFlow(period, day, level, focusId) {
-  const flow = period.flow.filter((f) => f.day !== day);
-  if (level !== null) flow.push({ day, flow: level });
-  await savePeriod({ ...period, flow }, day, focusId);
+function setFlow(period, day, level, focusId) {
+  queue(async () => {
+    const latest = current(period);
+    if (!latest) return;
+    const flow = latest.flow.filter((f) => f.day !== day);
+    if (level !== null) flow.push({ day, flow: level });
+    await savePeriod({ ...latest, flow }, day, focusId);
+  });
 }
 
 async function savePeriod(period, day, focusId) {
-  const periods = getState().periods;
   const { id, start_day, end_day, flow } = period;
   await save(
     async () => {
       const saved = await api('PUT', `/api/periods/${id}`, { start_day, end_day, flow });
-      return periods.map((p) => (p.id === id ? saved : p));
+      return (periods) => periods.map((p) => (p.id === id ? saved : p));
     },
     day,
     focusId,
@@ -498,33 +543,41 @@ function cancelDelete() {
   document.getElementById('day-delete')?.focus();
 }
 
-async function deletePeriod(period) {
-  const periods = getState().periods;
-  await save(
-    async () => {
-      try {
-        await api('DELETE', `/api/periods/${period.id}`);
-      } catch (error) {
-        // Already gone (e.g. deleted on another device) is what we wanted.
-        if (error.status !== 404) throw error;
-      }
-      return periods.filter((p) => p.id !== period.id);
-    },
-    ui().selected,
-  );
+function deletePeriod(period) {
+  queue(async () => {
+    if (!current(period)) return; // A repeated tap: already deleted.
+    await save(
+      async () => {
+        try {
+          await api('DELETE', `/api/periods/${period.id}`);
+        } catch (error) {
+          // Already gone (e.g. deleted on another device) is what we wanted.
+          if (error.status !== 404) throw error;
+        }
+        return (periods) => periods.filter((p) => p.id !== period.id);
+      },
+      ui().selected,
+    );
+  });
 }
 
 /**
  * Runs a change and stores the resulting period list, keeping the changed day
  * selected and focus on a sensible control (the buttons get re-rendered).
+ * `change` calls the API and returns how to update the list with its answer,
+ * so the list is only touched once it's clear the user is still signed in.
  */
 async function save(change, day, focusId) {
   try {
-    const periods = (await change()).sort((a, b) => a.start_day.localeCompare(b.start_day));
-    setState({ periods, cycleUi: { ...ui(), selected: day, error: null, confirmDelete: null } });
+    const update = await change();
+    if (!getState().user) return; // Signed out meanwhile.
+    const periods = update(getState().periods).sort((a, b) => a.start_day.localeCompare(b.start_day));
+    const error = failedInBurst ? ui().error : null;
+    setState({ periods, cycleUi: { ...ui(), selected: day, error, confirmDelete: null } });
     document.getElementById(focusId ?? `day-${day}`)?.focus();
   } catch (error) {
-    if (error.status === 401) return;
+    if (error.status === 401 || !getState().user) return;
+    failedInBurst = true;
     let message = 'cycle.saveFailed';
     if (error.status === 409) message = 'cycle.overlap';
     else if (error.code === 'stale_ongoing') message = 'cycle.staleOngoing';

@@ -24,6 +24,15 @@ export function getState() {
   return state;
 }
 
+/**
+ * Updates the state without re-rendering, for values the page already shows,
+ * like text being typed: a later re-render then keeps them instead of resetting
+ * the input. Everything else goes through setState.
+ */
+export function remember(patch) {
+  state = { ...state, ...patch };
+}
+
 export function setState(patch) {
   state = { ...state, ...patch };
   for (const listener of listeners) listener(state);

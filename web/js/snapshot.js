@@ -20,8 +20,15 @@ export function updateSnapshot(state) {
     if (saved !== null) clear();
     return;
   }
-  if (saved && KEYS.every((key) => saved[key] === state[key])) return;
-  saved = Object.fromEntries(KEYS.map((key) => [key, state[key]]));
+  // Weigh-ins and periods only load when their screen is opened. Until then
+  // they're undefined, and the stored copy (if it's this user's) still counts.
+  const stored = saved ?? readSnapshot();
+  const sameUser = stored?.user?.id === state.user.id;
+  const next = Object.fromEntries(
+    KEYS.map((key) => [key, state[key] === undefined && sameUser ? stored[key] : state[key]]),
+  );
+  if (saved && KEYS.every((key) => saved[key] === next[key])) return;
+  saved = next;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
   } catch {
