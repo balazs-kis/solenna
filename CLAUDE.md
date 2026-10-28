@@ -72,7 +72,7 @@ compose.yaml
 
 - **SQL lives inline** in the Rust functions that use it, as plain string literals. Use `?` parameters every time. Never build SQL with `format!`.
 - **Every query that touches user data must filter by `user_id`.** User IDs come from the authenticated session, never from the request body or URL. This is the single most important rule in the codebase.
-- **Migrations:** numbered `.sql` files in `server/migrations/`, embedded with `include_str!`, applied in order on startup and tracked with `PRAGMA user_version`. Never edit a migration that has been committed. Add a new one. Migrations can use `sha256(text)`, which `db.rs` registers (SQLite has no hash function). At every start (after migrations) the WAL is checkpointed and truncated (`db::checkpoint`), so no old pages linger in it.
+- **Migrations:** numbered `.sql` files in `server/migrations/`, embedded with `include_str!`, applied in order on startup and tracked with `PRAGMA user_version`. Never edit a migration that has been committed. Add a new one. (Before the first deployment, the history up to then was merged into `0001_init.sql` once, for 2.0.0.) At every start (after migrations) the WAL is checkpointed and truncated (`db::checkpoint`), so no old pages linger in it.
 - **SQLite settings on every connection:** `journal_mode=WAL`, `foreign_keys=ON`, `busy_timeout=5000`, `temp_store=MEMORY` (the `scratch` image has no writable `/tmp` for SQLite temp files), `secure_delete=ON` (deleted data is overwritten in the file, not left in free pages).
 - **Data types:**
   - Weight is stored as `INTEGER` grams (`weight_g`). The UI shows kg with one decimal place.

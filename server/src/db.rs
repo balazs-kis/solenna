@@ -9,22 +9,15 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use rusqlite::{Connection, functions::FunctionFlags};
-use sha2::{Digest, Sha256};
+use rusqlite::Connection;
 
 use crate::error::AppError;
 
 /// Applied in order. The DB's `PRAGMA user_version` is the number already applied.
 /// Migrations land together with the code that uses them. Never edit a committed
-/// migration; add a new one.
-const MIGRATIONS: &[&str] = &[
-    include_str!("../migrations/0001_init.sql"),
-    include_str!("../migrations/0002_weights.sql"),
-    include_str!("../migrations/0003_periods.sql"),
-    include_str!("../migrations/0004_settings.sql"),
-    include_str!("../migrations/0005_avatar.sql"),
-    include_str!("../migrations/0006_less_identity.sql"),
-];
+/// migration; add a new one. (Before the first deployment, the history up to
+/// then was merged into 0001_init.sql once.)
+const MIGRATIONS: &[&str] = &[include_str!("../migrations/0001_init.sql")];
 
 /// Current time as Unix seconds (UTC), the format of every timestamp column.
 pub fn unix_now() -> i64 {
@@ -91,13 +84,6 @@ fn configure(conn: &Connection) -> rusqlite::Result<()> {
     // Deleted rows are overwritten with zeros instead of lingering in free
     // pages, so a copy of the file doesn't contain deleted accounts' data.
     conn.pragma_update(None, "secure_delete", "ON")?;
-    // sha256(text) -> blob, for migrations (SQLite has no hash function).
-    conn.create_scalar_function(
-        "sha256",
-        1,
-        FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
-        |ctx| Ok(Sha256::digest(ctx.get::<String>(0)?.as_bytes()).to_vec()),
-    )?;
     Ok(())
 }
 
@@ -240,35 +226,6 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
             .unwrap();
         assert_eq!(sessions, 0);
-    }
-
-    #[test]
-    fn migration_6_hashes_the_sub_and_drops_identity() {
-        let mut conn = Connection::open_in_memory().unwrap();
-        configure(&conn).unwrap();
-        migrate(&mut conn, &MIGRATIONS[..5]).unwrap();
-        conn.execute(
-            "INSERT INTO users (google_sub, email, name, avatar, avatar_type, created_at, updated_at)
-             VALUES ('1234567890', 'a@example.com', 'A', x'FFD8FF', 'image/jpeg', 0, 0)",
-            [],
-        )
-        .unwrap();
-
-        migrate(&mut conn, MIGRATIONS).unwrap();
-        let hash: String = conn
-            .query_row("SELECT sub_hash FROM users", [], |row| row.get(0))
-            .unwrap();
-        assert_eq!(hash, crate::auth::sub_hash("1234567890"));
-        let columns: Vec<String> = conn
-            .prepare("SELECT name FROM pragma_table_info('users')")
-            .unwrap()
-            .query_map([], |row| row.get(0))
-            .unwrap()
-            .collect::<Result<_, _>>()
-            .unwrap();
-        for gone in ["google_sub", "email", "name", "avatar", "avatar_type"] {
-            assert!(!columns.iter().any(|c| c == gone), "{gone} still exists");
-        }
     }
 
     #[test]

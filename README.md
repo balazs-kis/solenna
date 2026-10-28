@@ -71,13 +71,13 @@ docker compose pull
 docker compose up -d
 ```
 
-Database migrations run on startup. Installed apps pick up the new version the next time they're opened. To stay on (or roll back to) a specific release, change `:latest` in `compose.yaml` to its version, e.g. `:0.2.0`. A rollback across a database migration doesn't work: an older version refuses a newer database, so restore a backup from before the update.
+Database migrations run on startup. Installed apps pick up the new version the next time they're opened. To stay on (or roll back to) a specific release, change `:latest` in `compose.yaml` to its version, e.g. `:2.0.0`. A rollback across a database migration doesn't work: an older version refuses a newer database, so restore a backup from before the update.
 
 ## Releasing
 
 Images are built by GitHub Actions (`.github/workflows/release.yml`) and published to `ghcr.io/balazs-kis/solenna`. A release happens when the version changes:
 
-1. Bump `version` in `server/Cargo.toml` (e.g. `0.1.0` → `0.2.0`).
+1. Bump `version` in `server/Cargo.toml` (e.g. `2.0.0` → `2.1.0`).
 2. Run `cargo build`, so `Cargo.lock` picks up the new version.
 3. Commit both files and push to `main`.
 
