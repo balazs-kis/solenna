@@ -121,7 +121,7 @@ function renderDay(info, selected, onSelect) {
 }
 
 /** Spoken label: the date plus what's on it, e.g. "Oct 27, 2026, period, heavy". */
-export function describeDay(info) {
+function describeDay(info) {
   const parts = [formatDay(info.day)];
   if (info.period === 'logged') {
     parts.push(t('cycle.legendPeriod'));

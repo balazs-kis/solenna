@@ -2,7 +2,6 @@ import en from '../i18n/en.json' with { type: 'json' };
 import hu from '../i18n/hu.json' with { type: 'json' };
 
 const dictionaries = { en, hu };
-export const languages = Object.keys(dictionaries);
 
 const STORAGE_KEY = 'solenna-lang';
 let active = 'en';

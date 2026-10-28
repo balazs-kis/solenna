@@ -3,7 +3,7 @@
 
 services:
   solenna:
-    # :latest is the newest release. Pin a version (e.g. :0.2.0) to stay on it or roll back.
+    # :latest is the newest release. Pin a version (e.g. :2.0.0) to stay on it or roll back.
     image: ghcr.io/balazs-kis/solenna:latest
     restart: unless-stopped
     # Hardening, in case someone ever finds a way into the app: it needs no Linux
@@ -12,6 +12,14 @@ services:
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
+    # Docker keeps container logs without a limit by default; keep at most 30 MB.
+    # This deliberately sets the json-file driver, overriding the daemon's default
+    # (e.g. journald): its max-size / max-file options only exist for json-file.
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
     env_file: .env
     environment:
       # Fixed for the container; these override anything in .env.

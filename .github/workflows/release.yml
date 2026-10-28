@@ -11,12 +11,13 @@
 name: Release
 
 on:
+  # Every push to main runs the quick version check below (about 10 seconds);
+  # only a version without a tag yet goes on to build. No paths filter: with
+  # one, a version bump followed quickly by another push would never release,
+  # because the bump's run is no longer the head of main and the later push
+  # wouldn't start this workflow at all.
   push:
     branches: [main]
-    # A release always changes the version, so other pushes don't need to start this.
-    paths:
-      - server/Cargo.toml
-      - .github/workflows/release.yml
   # Run by hand, e.g. to retry after a failed build (it still skips an existing version).
   workflow_dispatch:
 

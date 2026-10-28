@@ -3,7 +3,7 @@ import { h } from './dom.js';
 import { todayIso } from './format.js';
 import { activate, browserLanguage, detectLanguage, saveLanguage, t } from './i18n.js';
 import { startRouter } from './router.js';
-import { readSnapshot, updateSnapshot } from './snapshot.js';
+import { missingFromSnapshot, readSnapshot, updateSnapshot } from './snapshot.js';
 import { getState, setState, subscribe } from './store.js';
 import { applyTheme, savedTheme } from './theme.js';
 import * as account from './views/account.js';
@@ -299,7 +299,9 @@ function takeAuthError() {
 const authError = takeAuthError();
 subscribe(render);
 subscribe(updateSnapshot);
-window.addEventListener('offline', () => setState({ offline: true }));
+// Like a request that can't reach the server (see api()): show this device's
+// copy of any data not loaded yet.
+window.addEventListener('offline', () => setState({ offline: true, ...missingFromSnapshot(getState()) }));
 window.addEventListener('online', reconnect);
 // Also retry when the app comes back to the foreground: an unreachable server
 // (rather than a lost connection) sends no 'online' event.

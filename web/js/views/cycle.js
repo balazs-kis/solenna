@@ -78,7 +78,7 @@ export function render(container, state) {
     h(
       'div',
       { class: 'stack' },
-      renderQuickAction(analysis),
+      renderQuickAction(analysis, state.offline),
       h(
         'section',
         { class: 'card stack' },
@@ -90,7 +90,7 @@ export function render(container, state) {
           onMonth: (next) => setUi({ month: next }),
         }),
         renderLegend(showFertility),
-        renderDayPanel(selected, analysis, view),
+        renderDayPanel(selected, analysis, view, state),
       ),
       renderEvents(analysis, showFertility),
       h(
@@ -104,7 +104,7 @@ export function render(container, state) {
 }
 
 /** One big button for the most common action today. */
-function renderQuickAction(analysis) {
+function renderQuickAction(analysis, offline) {
   const { last, today } = analysis;
   const ongoing = last && last.end_day === null;
 
@@ -124,7 +124,7 @@ function renderQuickAction(analysis) {
           type: 'button',
           id: 'quick-action',
           class: 'button',
-          disabled: getState().offline,
+          disabled: offline,
           onclick: () => endPeriod(last, today),
         },
         t('cycle.stoppedToday'),
@@ -142,7 +142,7 @@ function renderQuickAction(analysis) {
         type: 'button',
         id: 'quick-action',
         class: 'button',
-        disabled: getState().offline,
+        disabled: offline,
         onclick: () => startPeriod(today),
       },
       h('span', { class: 'icon icon-drop', 'aria-hidden': 'true' }),
@@ -187,7 +187,7 @@ function renderLegend(showFertility) {
 }
 
 /** What's on the selected day, and the actions that make sense for it. */
-function renderDayPanel(day, analysis, view) {
+function renderDayPanel(day, analysis, view, state) {
   const info = analysis.dayInfo(day);
   const period = analysis.periodOn(day);
   const status = [];
@@ -205,15 +205,15 @@ function renderDayPanel(day, analysis, view) {
   if (info.isFuture) {
     content.push(h('p', { class: 'muted' }, t('cycle.futureDay')));
   } else {
-    if (period) content.push(renderFlowPicker(period, day, info.flow));
-    content.push(renderDayActions(day, period, analysis, view));
+    if (period) content.push(renderFlowPicker(period, day, info.flow, state.offline));
+    content.push(renderDayActions(day, period, analysis, view, state));
   }
   if (view.error) content.push(h('p', { class: 'error', role: 'alert' }, t(view.error)));
 
   return h('div', { class: 'day-panel stack' }, content);
 }
 
-function renderFlowPicker(period, day, current) {
+function renderFlowPicker(period, day, current, offline) {
   return h(
     'fieldset',
     { class: 'flow-picker' },
@@ -230,7 +230,7 @@ function renderFlowPicker(period, day, current) {
             id: `flow-${level}`,
             class: `flow-option flow-${level}`,
             'aria-pressed': String(current === level),
-            disabled: getState().offline,
+            disabled: offline,
             onclick: () => setFlow(period, day, current === level ? null : level, `flow-${level}`),
           },
           h('span', { class: 'flow-drops', 'aria-hidden': 'true' }, '●'.repeat(level)),
@@ -241,9 +241,9 @@ function renderFlowPicker(period, day, current) {
   );
 }
 
-function renderDayActions(day, period, analysis, view) {
+function renderDayActions(day, period, analysis, view, state) {
   const { today } = analysis;
-  const { periods, offline } = getState();
+  const { periods, offline } = state;
   const actions = [];
 
   if (!period) {

@@ -48,9 +48,12 @@ Add a site to `/etc/caddy/Caddyfile`:
 ```
 solenna.example.com {
 	encode zstd gzip
+	header Strict-Transport-Security "max-age=31536000"
 	reverse_proxy 127.0.0.1:37510
 }
 ```
+
+`Strict-Transport-Security` (HSTS) makes browsers use HTTPS for the site for a year, even if someone types or links `http://`. Add it once HTTPS works: a browser that has seen it refuses plain HTTP until it expires.
 
 `encode` compresses responses; the app itself doesn't. It only applies to text-like types (HTML, CSS, JS, JSON, SVG), so images pass through unchanged. Then `sudo systemctl reload caddy`. Caddy gets and renews the certificate automatically. The app sets its own security headers (CSP and others). It ignores `X-Forwarded-*` headers and builds every URL from `SOLENNA_BASE_URL`.
 
@@ -81,7 +84,7 @@ Images are built by GitHub Actions (`.github/workflows/release.yml`) and publish
 2. Run `cargo build`, so `Cargo.lock` picks up the new version.
 3. Commit both files and push to `main`.
 
-The workflow runs fmt, clippy and the tests, builds the image, pushes it tagged with the version, `latest` and the commit SHA, and tags the commit `v<version>`. Pushes that don't change the version do nothing. To retry a failed release, use "Run workflow" on the Actions tab.
+The workflow runs fmt, clippy and the tests, builds the image, pushes it tagged with the version, `latest` and the commit SHA, and tags the commit `v<version>`. Every push to `main` checks the version; while it already has its `v<version>` tag, nothing happens. That also means a failed release is retried by the next push to `main`, even an unrelated one: the version is still untagged, so that push builds and publishes it. To retry without pushing, use "Run workflow" on the Actions tab.
 
 The first release creates the `solenna` package on GitHub as private. Make it public once (the package's settings → Change visibility), so the server can pull without logging in.
 

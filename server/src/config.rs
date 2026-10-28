@@ -66,7 +66,13 @@ impl Config {
 /// - a quoted value is taken literally up to its closing quote (no escapes)
 /// - in an unquoted value, `#` preceded by whitespace starts an inline comment;
 ///   a `#` inside a value (`ab#cd`) is kept
+/// - a byte-order mark at the start (some Windows editors write one) is ignored
+///
+/// `$` is not expanded. Compose can expand `${...}` in unquoted and
+/// double-quoted values, so put a value containing `$` in single quotes:
+/// both read that literally.
 fn parse_dotenv(contents: &str) -> HashMap<String, String> {
+    let contents = contents.strip_prefix('\u{feff}').unwrap_or(contents);
     contents.lines().filter_map(parse_line).collect()
 }
 
@@ -108,6 +114,12 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ignores_a_byte_order_mark() {
+        let vars = parse_dotenv("\u{feff}SOLENNA_PORT=9000\nOTHER=x");
+        assert_eq!(vars.get("SOLENNA_PORT").map(String::as_str), Some("9000"));
+    }
 
     #[test]
     fn parses_dotenv_like_compose() {

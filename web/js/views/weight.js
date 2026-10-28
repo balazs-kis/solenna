@@ -84,19 +84,19 @@ export function render(container, state) {
     h(
       'div',
       { class: 'stack' },
-      renderForm(view),
+      renderForm(view, state.offline),
       state.weights.length === 0
         ? h('p', { class: 'card empty' }, t('weight.empty'))
         : [
             renderSummary(state.weights.at(-1), inRange),
             renderChartCard(range, inRange, from, today),
-            renderHistory(inRange, view),
+            renderHistory(inRange, view, state.offline),
           ],
     ),
   );
 }
 
-function renderForm(view) {
+function renderForm(view, offline) {
   const editing = view.edit;
   const values = {
     day: view.draft?.day ?? editing?.day ?? todayIso(),
@@ -148,7 +148,7 @@ function renderForm(view) {
     h(
       'div',
       { class: 'actions' },
-      h('button', { type: 'submit', class: 'button', disabled: getState().offline }, t('weight.save')),
+      h('button', { type: 'submit', class: 'button', disabled: offline }, t('weight.save')),
       editing &&
         h('button', { type: 'button', class: 'button secondary', onclick: cancelEdit }, t('weight.cancel')),
     ),
@@ -200,7 +200,7 @@ function renderChartCard(range, inRange, from, today) {
   );
 }
 
-function renderHistory(inRange, view) {
+function renderHistory(inRange, view, offline) {
   if (inRange.length === 0) return null;
   return h(
     'section',
@@ -210,12 +210,12 @@ function renderHistory(inRange, view) {
     h(
       'ul',
       { class: 'entry-list' },
-      [...inRange].reverse().map((entry) => renderEntry(entry, view)),
+      [...inRange].reverse().map((entry) => renderEntry(entry, view, offline)),
     ),
   );
 }
 
-function renderEntry(entry, view) {
+function renderEntry(entry, view, offline) {
   const date = formatDay(entry.day);
   const actions =
     view.confirmDelete === entry.day
@@ -227,7 +227,7 @@ function renderEntry(entry, view) {
               type: 'button',
               id: 'confirm-delete',
               class: 'button danger small',
-              disabled: getState().offline,
+              disabled: offline,
               onclick: () => remove(entry.day),
             },
             t('weight.delete'),
@@ -255,7 +255,7 @@ function renderEntry(entry, view) {
               type: 'button',
               id: `delete-${entry.day}`,
               class: 'link-button',
-              disabled: getState().offline,
+              disabled: offline,
               'aria-label': t('weight.deleteLabel', { date }),
               onclick: () => askDelete(entry.day),
             },
