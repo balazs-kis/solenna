@@ -3,8 +3,11 @@
 // - Cycle day 1 is the first day of real bleeding. Spotting at the start of a
 //   period still belongs to the previous cycle, so leading spotting days are
 //   skipped when finding where a cycle starts (the calendar still shows them).
+//   A period that is nothing but spotting starts no cycle at all.
 // - Cycle and period lengths are averages of the recent history, or typical
-//   values (28 / 5 days) until there is enough data.
+//   values (28 / 5 days) until there is enough data. Period lengths count from
+//   cycle day 1, the same day predictions start from. A gap much longer than
+//   the user's usual cycle is most likely a missed log and doesn't count.
 // - Ovulation is followed by a ~14-day luteal phase that ends the day before
 //   the next period, so ovulation is 15 days before the next start (cycle day
 //   14 of a 28-day cycle). The luteal phase is the stable part of the cycle, so
@@ -36,6 +39,13 @@ const HISTORY = 6;
 const MIN_CYCLE_DAYS = 15;
 const MAX_CYCLE_DAYS = 60;
 /**
+ * Within that range, a gap over this many times the median of the recent gaps
+ * is most likely a missed log too: a period that was never logged roughly
+ * doubles a gap (56 days among 28s), while a person's real cycles rarely vary
+ * that much (21 and 35, or 26 and 41, are both kept).
+ */
+const MISSED_LOG_FACTOR = 1.8;
+/**
  * Healthy cycles vary by up to about a week, so an overdue period only counts
  * as late after this many days (or the user's own observed variation, if larger).
  */
@@ -47,10 +57,13 @@ const PREDICTED_CYCLES = 3;
  * start day; `today` is the local calendar day.
  */
 export function analyzeCycle(periods, today) {
-  const stats = averages(periods, today);
+  // Only real periods start cycles; spotting-only ones still show and can be edited.
+  const cyclePeriods = periods.filter((p) => !isSpottingOnly(p, today));
+  const stats = averages(cyclePeriods, today);
   const last = periods.at(-1) ?? null;
-  const prediction = last
-    ? predictCycles(last, stats, today)
+  const cycleLast = cyclePeriods.at(-1) ?? null;
+  const prediction = cycleLast
+    ? predictCycles(cycleLast, stats, today)
     : { cycles: [], expectedStart: null, overdueBy: 0 };
   const flowByDay = new Map(periods.flatMap((p) => p.flow.map((f) => [f.day, f.flow])));
   const lateAfter = Math.max(LATE_TOLERANCE_DAYS, stats.spread);
@@ -58,7 +71,10 @@ export function analyzeCycle(periods, today) {
   return {
     today,
     stats,
+    /** The latest logged period, spotting-only or not. */
     last,
+    /** The latest period that starts a cycle (what `cycles[0]` is built from). */
+    cycleLast,
     cycles: prediction.cycles,
     expectedStart: prediction.expectedStart,
     /** Days past the expected start of the next period (0 if not overdue). */
@@ -98,8 +114,23 @@ export function loggedEnd(period, today) {
 }
 
 /**
+ * A period whose every day so far is logged as spotting. It starts no cycle
+ * and doesn't count toward lengths. A day without a logged strength counts as
+ * real flow: the strength just wasn't recorded.
+ */
+function isSpottingOnly(period, today) {
+  const spotting = new Set(period.flow.filter((f) => f.flow === 1).map((f) => f.day));
+  const end = loggedEnd(period, today);
+  for (let day = period.start_day; day <= end; day = addDays(day, 1)) {
+    if (!spotting.has(day)) return false;
+  }
+  return true;
+}
+
+/**
  * Where the cycle of this period starts: its first day that isn't logged as
- * spotting. A period of nothing but spotting (so far) starts on its first day.
+ * spotting. (Spotting-only periods don't start cycles; for them this falls
+ * back to the first day.)
  */
 export function cycleStart(period, today) {
   const spotting = new Set(period.flow.filter((f) => f.flow === 1).map((f) => f.day));
@@ -124,16 +155,22 @@ export function assumedEnd(day, periods, periodLength, today) {
   return end;
 }
 
+/** `periods` are the ones that start cycles. */
 function averages(periods, today) {
   const starts = periods.map((p) => cycleStart(p, today));
-  const cycleLengths = starts
+  // The recent gaps only, so a lasting change in cycle length (after the
+  // pill, postpartum) takes over instead of being dropped as missed logs.
+  const recent = starts
     .slice(1)
     .map((start, i) => daysBetween(starts[i], start))
     .filter((days) => days >= MIN_CYCLE_DAYS && days <= MAX_CYCLE_DAYS)
     .slice(-HISTORY);
+  const usual = lowerMedian(recent);
+  const cycleLengths = recent.filter((days) => days <= usual * MISSED_LOG_FACTOR);
+  // From cycle day 1, so leading spotting doesn't stretch the predicted bleeding.
   const periodLengths = periods
     .filter((p) => p.end_day)
-    .map((p) => daysBetween(p.start_day, p.end_day) + 1)
+    .map((p) => daysBetween(cycleStart(p, today), p.end_day) + 1)
     .slice(-HISTORY);
 
   return {
@@ -141,12 +178,24 @@ function averages(periods, today) {
     periodLength: average(periodLengths) ?? TYPICAL_PERIOD_DAYS,
     /** 0 means the cycle length is the typical value, not measured. */
     measuredCycles: cycleLengths.length,
+    /** Recent gaps left out as missed logs (much longer than the usual cycle). */
+    skippedGaps: recent.length - cycleLengths.length,
     /** 0 means the period length is the typical value. */
     measuredPeriods: periodLengths.length,
     loggedPeriods: periods.length,
     /** How much the measured cycles vary (longest minus shortest). */
     spread: cycleLengths.length ? Math.max(...cycleLengths) - Math.min(...cycleLengths) : 0,
   };
+}
+
+/**
+ * The middle value, or the lower of the two middle ones: with only 28 and 56,
+ * the 28 is the usual cycle and the 56 the missed log.
+ */
+function lowerMedian(values) {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor((sorted.length - 1) / 2)];
 }
 
 function average(values) {
@@ -168,11 +217,11 @@ function predictCycles(last, stats, today) {
   const expectedStart = addDays(start, cycleLength);
   const overdueBy = !ongoing && expectedStart < today ? daysBetween(expectedStart, today) : 0;
 
-  // While bleeding, assume the average length (at least until today), but
-  // never longer than a period can be.
+  // While bleeding, assume the average length from cycle day 1 (at least
+  // until today), but never longer than a period can be.
   let currentPeriodEnd = last.end_day;
   if (ongoing) {
-    const typicalEnd = addDays(last.start_day, periodLength - 1);
+    const typicalEnd = addDays(start, periodLength - 1);
     const limit = addDays(last.start_day, MAX_PERIOD_DAYS - 1);
     currentPeriodEnd = typicalEnd > today ? typicalEnd : today;
     if (currentPeriodEnd > limit) currentPeriodEnd = limit;

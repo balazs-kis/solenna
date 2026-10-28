@@ -108,13 +108,14 @@ function renderQuickAction(analysis) {
 
   if (ongoing) {
     const periodDay = daysBetween(last.start_day, today) + 1;
+    const spotting = last !== analysis.cycleLast;
     if (periodDay > MAX_PERIOD_DAYS) {
       return h('p', { class: 'card error' }, t('cycle.ongoingTooLong', { days: formatDays(periodDay) }));
     }
     return h(
       'div',
       { class: 'card quick-action' },
-      h('span', { class: 'quick-action-label' }, t('cycle.periodDay', { day: periodDay })),
+      h('span', { class: 'quick-action-label' }, t(spotting ? 'cycle.spottingDay' : 'cycle.periodDay', { day: periodDay })),
       h(
         'button',
         {
@@ -345,8 +346,15 @@ function renderEvents(analysis, showFertility) {
   }
 
   const ongoing = last.end_day === null;
+  // Ongoing spotting (nothing but spotting logged so far) is no period of its
+  // own: the cycle runs on, so the next-period cards still apply.
+  const spotting = ongoing && last !== analysis.cycleLast;
   const next = cycles[1];
-  if (ongoing) {
+  if (spotting) {
+    const day = daysBetween(last.start_day, today) + 1;
+    cards.push(eventCard('period', 'drop', t('cycle.spottingDay', { day }), t('cycle.spottingText')));
+  }
+  if (ongoing && !spotting) {
     const expectedEnd = cycles[0].periodEnd;
     cards.push(
       eventCard(
@@ -438,6 +446,7 @@ function averagesSource(stats) {
   if (stats.measuredCycles > 0) parts.push(t('cycle.basedOn', { count: stats.measuredCycles }));
   else if (stats.loggedPeriods < 2) parts.push(t('cycle.typicalCycleFewPeriods'));
   else parts.push(t('cycle.typicalCycleGaps'));
+  if (stats.skippedGaps > 0) parts.push(t('cycle.skippedGaps'));
   if (stats.measuredPeriods === 0) parts.push(t('cycle.typicalPeriodLength'));
   return parts.join(' ');
 }
