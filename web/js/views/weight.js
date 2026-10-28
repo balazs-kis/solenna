@@ -48,7 +48,9 @@ export async function load() {
     const editGone = edit && !weights.some((entry) => entry.day === edit.day);
     setState({ weights, ...(editGone && { weightUi: { ...ui(), edit: null } }) });
   } catch (error) {
-    if (error.status !== 401) setUi({ loadFailed: true });
+    // No connection: the offline banner says so, and the screen keeps the data
+    // it has. Reconnecting loads it again.
+    if (error.status !== 401 && error.code !== 'network') setUi({ loadFailed: true });
   }
 }
 
@@ -306,7 +308,9 @@ async function save(event) {
     if (error.status === 401 || !getState().user) return;
     // Keep what the user typed; the re-render would otherwise reset the form.
     // A 400 means the input itself was rejected, so "try again" wouldn't help.
-    const message = error.status === 400 ? 'weight.invalid' : 'weight.saveFailed';
+    let message = 'weight.saveFailed';
+    if (error.code === 'network') message = 'app.networkError';
+    else if (error.status === 400) message = 'weight.invalid';
     setUi({ draft: draftOf(form), error: message });
   }
 }

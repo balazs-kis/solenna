@@ -40,7 +40,9 @@ export async function load() {
     if (!getState().user || getState().periods !== before) return;
     setState({ periods });
   } catch (error) {
-    if (error.status !== 401) setUi({ loadFailed: true });
+    // No connection: the offline banner says so, and the screen keeps the data
+    // it has. Reconnecting loads it again.
+    if (error.status !== 401 && error.code !== 'network') setUi({ loadFailed: true });
   }
 }
 
@@ -588,7 +590,8 @@ async function save(change, day, focusId) {
     if (error.status === 401 || !getState().user) return;
     failedInBurst = true;
     let message = 'cycle.saveFailed';
-    if (error.status === 409) message = 'cycle.overlap';
+    if (error.code === 'network') message = 'app.networkError';
+    else if (error.status === 409) message = 'cycle.overlap';
     else if (error.code === 'stale_ongoing') message = 'cycle.staleOngoing';
     else if (error.status === 400) message = 'cycle.invalid';
     setUi({ error: message, confirmDelete: null });

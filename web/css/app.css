@@ -270,6 +270,16 @@ a {
   }
 }
 
+/* Hidden on screen, still read by screen readers. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 /* Components */
 .card {
   margin: 0;
@@ -560,7 +570,7 @@ h2 {
 
   & button {
     flex: 1;
-    min-height: 40px;
+    min-height: 44px;
     color: var(--text-muted);
     font: inherit;
     font-size: 0.875rem;
@@ -769,7 +779,8 @@ h3 {
   display: grid;
   place-items: center;
   aspect-ratio: 1;
-  min-height: 40px;
+  /* 44px tall even where seven columns leave less width. */
+  min-height: 44px;
   padding: 0;
   color: var(--text);
   font: inherit;

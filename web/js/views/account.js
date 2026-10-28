@@ -10,7 +10,8 @@ export const title = 'account.title';
 
 // The account's settings are `state.user.settings` (from /api/me); the theme is
 // `state.theme` (this device only). `state.accountUi` holds this screen's UI
-// state: saveFailed, logoutFailed, exportFailed, deleteFailed, confirmDelete.
+// state: saveFailed, logoutFailed, exportFailed, deleteFailed (each the i18n
+// key of the message, see failure()), confirmDelete.
 
 // Language names are shown in their own language, so they're the same in every
 // dictionary. 'device' is saved as null: follow the browser's language.
@@ -60,7 +61,7 @@ export function render(container, state) {
       'div',
       { class: 'stack' },
       renderProfile(state, view),
-      view.saveFailed && h('p', { class: 'card error', role: 'alert' }, t('account.saveFailed')),
+      view.saveFailed && h('p', { class: 'card error', role: 'alert' }, t(view.saveFailed)),
       h(
         'section',
         { class: 'card stack' },
@@ -141,7 +142,7 @@ function renderProfile(state, view) {
         )
       : h('button', { type: 'button', id: 'logout', class: 'button secondary', onclick: logout }, t('account.logout')),
     state.offline && h('p', { class: 'muted profile-note' }, t('account.removeLocalHint')),
-    view.logoutFailed && h('p', { class: 'error profile-note', role: 'alert' }, t('account.logoutFailed')),
+    view.logoutFailed && h('p', { class: 'error profile-note', role: 'alert' }, t(view.logoutFailed)),
   );
 }
 
@@ -169,7 +170,7 @@ function renderDataSection(view, offline) {
     { class: 'card stack' },
     h('h2', {}, t('account.data')),
     h('p', { class: 'muted' }, t('account.exportText')),
-    view.exportFailed && h('p', { class: 'error', role: 'alert' }, t('account.exportFailed')),
+    view.exportFailed && h('p', { class: 'error', role: 'alert' }, t(view.exportFailed)),
     h(
       'div',
       { class: 'actions' },
@@ -189,7 +190,7 @@ function renderDeleteSection(view, offline) {
     { class: 'card stack danger-zone' },
     h('h2', {}, t('account.deleteAccount')),
     h('p', { class: 'muted' }, t('account.deleteText')),
-    view.deleteFailed && h('p', { class: 'error', role: 'alert' }, t('account.deleteFailed')),
+    view.deleteFailed && h('p', { class: 'error', role: 'alert' }, t(view.deleteFailed)),
     view.confirmDelete
       ? h(
           'div',
@@ -222,6 +223,11 @@ function renderDeleteSection(view, offline) {
 
 // --- Actions -----------------------------------------------------------------
 
+/** The message for a failed request: "no connection" if it never reached the server. */
+function failure(error, message, networkMessage = 'app.noConnection') {
+  return error?.code === 'network' ? networkMessage : message;
+}
+
 /** Saves the account's settings with `patch` applied; on failure the screen shows the old values. */
 // Saves run one after another, and each one is built from the settings the
 // previous one stored. Otherwise two quick changes would each send the other's
@@ -246,7 +252,7 @@ async function sendSettings(patch) {
       accountUi: { ...ui(), saveFailed: false },
     });
   } catch (error) {
-    if (error.status !== 401) setUi({ saveFailed: true });
+    if (error.status !== 401) setUi({ saveFailed: failure(error, 'account.saveFailed', 'app.networkError') });
   }
 }
 
@@ -268,8 +274,8 @@ async function logout() {
   try {
     await api('POST', '/auth/logout');
     setState(SIGNED_OUT);
-  } catch {
-    setUi({ logoutFailed: true });
+  } catch (error) {
+    setUi({ logoutFailed: failure(error, 'account.logoutFailed') });
   }
 }
 
@@ -297,7 +303,7 @@ async function exportData() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     setUi({ exportFailed: false });
   } catch (error) {
-    if (error.status !== 401) setUi({ exportFailed: true });
+    if (error.status !== 401) setUi({ exportFailed: failure(error, 'account.exportFailed') });
   }
 }
 
@@ -316,6 +322,6 @@ async function deleteAccount() {
     await api('DELETE', '/api/me');
     setState({ ...SIGNED_OUT, accountDeleted: true });
   } catch (error) {
-    if (error.status !== 401) setUi({ deleteFailed: true });
+    if (error.status !== 401) setUi({ deleteFailed: failure(error, 'account.deleteFailed') });
   }
 }

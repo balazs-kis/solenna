@@ -57,9 +57,12 @@ function render(state) {
   const main = h('main', { class: signedIn ? 'main' : 'main main-centered', id: 'main' });
   view.render(main, state);
   if (state.offline) main.prepend(renderOfflineBanner(state));
+  announceOffline(state);
   root.replaceChildren(...(signedIn ? [renderNav(state), main] : [main]));
 
   if (state.path !== renderedPath && renderedPath !== null) {
+    // A new screen starts at the top, not at the old screen's scroll position.
+    window.scrollTo(0, 0);
     // After navigating, move focus to the new page's heading (screen readers announce it).
     main.querySelector('h1')?.focus();
   } else if (focusedId) {
@@ -192,6 +195,31 @@ async function reconnect() {
   setState({ reconnecting: false });
 }
 
+/** What the offline banner says (and screen readers hear). Signed out, there's no data to talk about. */
+function offlineMessage(state) {
+  return t(state.user ? 'app.offline' : 'app.offlineSignIn');
+}
+
+const announcer = document.getElementById('announcer');
+let announced = '';
+let wasOffline = false;
+
+/**
+ * Screen readers hear the offline message once, when it changes, and "back
+ * online" once when the connection returns. The visible banner is rebuilt on
+ * every render, so it can't be the live region itself: that would announce
+ * it again each time.
+ */
+function announceOffline(state) {
+  if (state.offline) wasOffline = true;
+  let text = '';
+  if (state.offline) text = offlineMessage(state);
+  else if (wasOffline) text = t('app.backOnline');
+  if (text === announced) return;
+  announced = text;
+  announcer.textContent = text;
+}
+
 /**
  * The browser can't tell when our server is reachable again (its 'online'
  * event only means the device has a network), so the user can retry by hand.
@@ -201,7 +229,7 @@ function renderOfflineBanner(state) {
     'div',
     { class: 'offline-banner' },
     // Signed out (e.g. after removing the data offline), there's no data to talk about.
-    h('p', { role: 'status' }, t(state.user ? 'app.offline' : 'app.offlineSignIn')),
+    h('p', {}, offlineMessage(state)),
     h(
       'button',
       // Stays enabled while retrying (a disabled button would lose focus); reconnect() ignores repeats.
@@ -218,12 +246,20 @@ function renderOfflineBanner(state) {
 function registerServiceWorker() {
   if (!('serviceWorker' in navigator) || ['localhost', '127.0.0.1'].includes(location.hostname)) return;
   // Without it the app still works online, so a failure needs no handling.
-  navigator.serviceWorker.register('/sw.js').catch(() => {});
-
   // A new version takes control right away (sw.js calls skipWaiting), but this
   // page keeps running the files it loaded: reload to get the new ones. The
-  // first install also takes control of the page; that's no update.
+  // first install also takes control of the page; that's no update. (After a
+  // hard reload the page has no controller, but a worker is active: that's
+  // not a first install, so its updates still reload.)
   let hadController = Boolean(navigator.serviceWorker.controller);
+  navigator.serviceWorker
+    .getRegistration()
+    .then((registration) => {
+      if (registration?.active) hadController = true;
+    })
+    .catch(() => {});
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!hadController) {
       hadController = true;

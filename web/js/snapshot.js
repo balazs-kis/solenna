@@ -36,6 +36,19 @@ export function updateSnapshot(state) {
   }
 }
 
+/**
+ * The kept data the state doesn't have yet (screens not opened this session),
+ * if the copy is this user's: for when the server becomes unreachable
+ * mid-session, so every screen still shows its last data.
+ */
+export function missingFromSnapshot(state) {
+  const stored = readSnapshot();
+  if (!state.user || stored?.user?.id !== state.user.id) return {};
+  const dataKeys = KEYS.filter((key) => key !== 'user');
+  const missing = dataKeys.filter((key) => state[key] === undefined && stored[key] !== undefined);
+  return Object.fromEntries(missing.map((key) => [key, stored[key]]));
+}
+
 export function readSnapshot() {
   try {
     return JSON.parse(localStorage.getItem(STORAGE_KEY)) ?? null;
