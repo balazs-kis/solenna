@@ -9,7 +9,10 @@ use std::collections::{BTreeMap, HashSet};
 
 use axum::{
     Json,
-    extract::{Path, State, rejection::JsonRejection},
+    extract::{
+        Path, State,
+        rejection::{JsonRejection, PathRejection},
+    },
     http::StatusCode,
 };
 use rusqlite::{Connection, OptionalExtension};
@@ -132,23 +135,32 @@ pub async fn create(
 pub async fn update(
     State(state): State<AppState>,
     user: CurrentUser,
-    Path(id): Path<i64>,
+    id: Result<Path<i64>, PathRejection>,
     body: Result<Json<PeriodBody>, JsonRejection>,
 ) -> Result<Json<Period>, AppError> {
+    let id = period_id(id)?;
     let body = validated(body)?;
     let period = state
         .db
         .call(move |conn| {
             let tx = conn.transaction()?;
+            // Someone else's (or no) period is a 404, even if the days would clash.
+            let owned: Option<i64> = tx
+                .query_row(
+                    "SELECT id FROM periods WHERE id = ? AND user_id = ?",
+                    (id, user.id),
+                    |row| row.get(0),
+                )
+                .optional()?;
+            if owned.is_none() {
+                return Err(AppError::NotFound);
+            }
             check_no_overlap(&tx, user.id, Some(id), &body)?;
-            let updated = tx.execute(
+            tx.execute(
                 "UPDATE periods SET start_day = ?, end_day = ?, updated_at = ?
                  WHERE id = ? AND user_id = ?",
                 (&body.start_day, &body.end_day, unix_now(), id, user.id),
             )?;
-            if updated == 0 {
-                return Err(AppError::NotFound);
-            }
             // The period belongs to this user (checked just above).
             tx.execute("DELETE FROM period_flow WHERE period_id = ?", [id])?;
             insert_flow(&tx, id, &body.flow)?;
@@ -162,8 +174,9 @@ pub async fn update(
 pub async fn delete(
     State(state): State<AppState>,
     user: CurrentUser,
-    Path(id): Path<i64>,
+    id: Result<Path<i64>, PathRejection>,
 ) -> Result<StatusCode, AppError> {
+    let id = period_id(id)?;
     let deleted = state
         .db
         .call(move |conn| {
@@ -177,6 +190,12 @@ pub async fn delete(
         return Err(AppError::NotFound);
     }
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// The `{id}` in the URL, as a JSON error (not axum's plain-text one) when it isn't a number.
+fn period_id(id: Result<Path<i64>, PathRejection>) -> Result<i64, AppError> {
+    id.map(|Path(id)| id)
+        .map_err(|_| AppError::BadRequest("invalid_id"))
 }
 
 /// Checks the body on its own: real days, a sane range, and flow days inside it.
@@ -534,6 +553,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn bad_ids_get_a_json_error() {
+        let (app, alice, _) = app_with_users().await;
+        for method in ["PUT", "DELETE"] {
+            let body = json!({ "start_day": "2026-10-01", "end_day": "2026-10-02" });
+            let (status, response) =
+                call(&app, method, "/api/periods/abc", &alice, Some(body)).await;
+            assert_eq!(
+                (status, response),
+                (StatusCode::BAD_REQUEST, json!({ "error": "invalid_id" })),
+                "{method}"
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn users_cannot_read_or_change_each_others_periods() {
         let (app, alice, bob) = app_with_users().await;
         let id = create(
@@ -557,6 +591,22 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::NOT_FOUND);
         let (status, _) = call(&app, "DELETE", &uri, &bob, None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        // Even when the days would clash with Bob's own period, it's a 404, not a 409.
+        create(
+            &app,
+            &bob,
+            json!({ "start_day": "2026-09-01", "end_day": "2026-09-03" }),
+        )
+        .await;
+        let (status, _) = call(
+            &app,
+            "PUT",
+            &uri,
+            &bob,
+            Some(json!({ "start_day": "2026-09-02", "end_day": "2026-09-04" })),
+        )
+        .await;
         assert_eq!(status, StatusCode::NOT_FOUND);
         // Alice's periods don't block Bob's own on the same days.
         create(

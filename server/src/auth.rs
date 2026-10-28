@@ -14,7 +14,7 @@ use std::{
 
 use axum::{
     Router,
-    extract::{FromRequestParts, Query, State},
+    extract::{FromRequestParts, Query, State, rejection::QueryRejection},
     http::{HeaderMap, StatusCode, header, request::Parts},
     response::{AppendHeaders, IntoResponse, Redirect, Response},
     routing::{get, post},
@@ -85,6 +85,10 @@ impl FromRequestParts<AppState> for CurrentUser {
 
 /// How long a fresh sign-in's profile waits for the browser to pick it up.
 const PROFILE_TTL: Duration = Duration::from_secs(10 * 60);
+/// At most this many profiles wait at once (each can hold a picture of up to
+/// 200 KB); a sign-in beyond it pushes out the oldest. Each user holds at most
+/// one: signing in again replaces their waiting profile.
+const MAX_PENDING_PROFILES: usize = 100;
 
 /// The name, email and picture from Google, for display only.
 pub struct Profile {
@@ -100,21 +104,44 @@ pub struct Profile {
 /// "Google account" until the next sign-in.
 #[derive(Default)]
 pub struct PendingProfiles {
-    profiles: Mutex<HashMap<Vec<u8>, (Instant, Profile)>>,
+    profiles: Mutex<HashMap<Vec<u8>, Pending>>,
+}
+
+struct Pending {
+    user_id: i64,
+    added: Instant,
+    profile: Profile,
 }
 
 impl PendingProfiles {
-    fn insert(&self, session: Vec<u8>, profile: Profile, now: Instant) {
+    fn insert(&self, session: Vec<u8>, user_id: i64, profile: Profile, now: Instant) {
         let mut profiles = self.profiles.lock().unwrap_or_else(PoisonError::into_inner);
-        profiles.retain(|_, (added, _)| now.duration_since(*added) < PROFILE_TTL);
-        profiles.insert(session, (now, profile));
+        profiles.retain(|_, pending| {
+            pending.user_id != user_id && now.duration_since(pending.added) < PROFILE_TTL
+        });
+        while profiles.len() >= MAX_PENDING_PROFILES {
+            let oldest = profiles
+                .iter()
+                .min_by_key(|(_, pending)| pending.added)
+                .map(|(session, _)| session.clone());
+            match oldest {
+                Some(session) => profiles.remove(&session),
+                None => break,
+            };
+        }
+        let pending = Pending {
+            user_id,
+            added: now,
+            profile,
+        };
+        profiles.insert(session, pending);
     }
 
     /// The session's profile, once: it's gone from memory afterwards.
     pub fn take(&self, session: &[u8], now: Instant) -> Option<Profile> {
         let mut profiles = self.profiles.lock().unwrap_or_else(PoisonError::into_inner);
-        let (added, profile) = profiles.remove(session)?;
-        (now.duration_since(added) < PROFILE_TTL).then_some(profile)
+        let pending = profiles.remove(session)?;
+        (now.duration_since(pending.added) < PROFILE_TTL).then_some(pending.profile)
     }
 }
 
@@ -128,9 +155,12 @@ pub fn sub_hash(sub: &str) -> String {
         .collect()
 }
 
-/// Fixed-window limit on all auth requests together. A per-IP limit would mean
-/// trusting `X-Forwarded-For` from the proxy; a global one is enough here, since
-/// it only has to stop someone hammering the endpoints (and Google through us).
+/// Fixed-window limit on the sign-in callback's call to Google, shared by
+/// everyone: a per-IP limit would mean trusting `X-Forwarded-For` from the proxy.
+/// It stops someone hammering Google's token endpoint through us. The price:
+/// anyone can use up the window (with their own `state` cookie and made-up
+/// codes), which blocks new sign-ins, not existing sessions, while they keep
+/// it up. Without a limit they could hammer Google instead.
 pub struct RateLimiter {
     max: u32,
     window: Duration,
@@ -207,12 +237,19 @@ enum LoginError {
 async fn callback(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Query(params): Query<CallbackParams>,
+    params: Result<Query<CallbackParams>, QueryRejection>,
 ) -> Response {
     let secure = state.config.secure_cookies();
     let clear_oauth = cookie(OAUTH_COOKIE, "", "/auth", 0, secure);
 
-    match finish_login(&state, &headers, params).await {
+    let result = match params {
+        Ok(Query(params)) => finish_login(&state, &headers, params).await,
+        Err(_) => {
+            tracing::warn!("sign-in callback with a malformed query");
+            Err(LoginError::Failed)
+        }
+    };
+    match result {
         Ok(token) => (
             AppendHeaders([
                 (header::SET_COOKIE, clear_oauth),
@@ -286,14 +323,14 @@ async fn finish_login(
     // Signing in again in this browser replaces its previous session.
     let previous = read_cookie(headers, SESSION_COOKIE).map(|token| hash_token(&token));
     let sub = claims.sub;
-    let token = state
+    let (token, user_id) = state
         .db
         .call(move |conn| login_user(conn, &sub, now, previous))
         .await
         .map_err(|_| LoginError::Failed)?;
     state
         .profiles
-        .insert(hash_token(&token), profile, Instant::now());
+        .insert(hash_token(&token), user_id, profile, Instant::now());
     Ok(token)
 }
 
@@ -360,6 +397,7 @@ struct IdClaims {
     aud: String,
     exp: i64,
     sub: String,
+    #[serde(default)]
     email: String,
     #[serde(default)]
     name: String,
@@ -393,14 +431,14 @@ fn verify_id_token(id_token: &str, client_id: &str, now: i64) -> Result<IdClaims
 
 /// Creates the user on first sign-in and starts a session, ending `previous`
 /// (the hash of the browser's old session, if any). Returns the session token
-/// for the cookie; only its hash is stored. Nothing about who the user is gets
+/// for the cookie (only its hash is stored) and the user's id. Nothing about who the user is gets
 /// stored, only `sub_hash`.
 fn login_user(
     conn: &mut Connection,
     sub: &str,
     now: i64,
     previous: Option<Vec<u8>>,
-) -> Result<String, AppError> {
+) -> Result<(String, i64), AppError> {
     let tx = conn.transaction()?;
     if let Some(previous) = previous {
         tx.execute("DELETE FROM sessions WHERE token_hash = ?", [previous])?;
@@ -421,11 +459,11 @@ fn login_user(
         (hash_token(&token), user_id, now, now + SESSION_TTL),
     )?;
     tx.commit()?;
-    Ok(token)
+    Ok((token, user_id))
 }
 
 /// Returns the session's user, extending the session if it is due.
-fn lookup_session(conn: &mut Connection, hash: &[u8], now: i64) -> Result<Option<i64>, AppError> {
+fn lookup_session(conn: &Connection, hash: &[u8], now: i64) -> Result<Option<i64>, AppError> {
     let session: Option<(i64, i64)> = conn
         .query_row(
             "SELECT user_id, expires_at FROM sessions WHERE token_hash = ? AND expires_at > ?",
@@ -505,7 +543,7 @@ fn read_cookie(headers: &HeaderMap, name: &str) -> Option<String> {
 /// any route that needs a session.
 #[cfg(test)]
 pub async fn test_session(state: &AppState, sub: &'static str, email: &'static str) -> String {
-    let token = state
+    let (token, user_id) = state
         .db
         .call(move |conn| login_user(conn, sub, unix_now(), None))
         .await
@@ -517,7 +555,7 @@ pub async fn test_session(state: &AppState, sub: &'static str, email: &'static s
     };
     state
         .profiles
-        .insert(hash_token(&token), profile, Instant::now());
+        .insert(hash_token(&token), user_id, profile, Instant::now());
     format!("{SESSION_COOKIE}={token}")
 }
 
@@ -644,6 +682,63 @@ mod tests {
     }
 
     #[test]
+    fn pending_profiles_are_capped() {
+        let profiles = PendingProfiles::default();
+        let now = Instant::now();
+        for i in 0..=MAX_PENDING_PROFILES {
+            let profile = Profile {
+                name: String::new(),
+                email: format!("{i}@example.com"),
+                avatar: None,
+            };
+            let added = now + Duration::from_millis(i as u64);
+            profiles.insert(i.to_le_bytes().to_vec(), i as i64, profile, added);
+        }
+        let later = now + Duration::from_secs(1);
+        // The oldest made room; the newest is there.
+        assert!(profiles.take(&0usize.to_le_bytes(), later).is_none());
+        assert!(
+            profiles
+                .take(&MAX_PENDING_PROFILES.to_le_bytes(), later)
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn each_user_holds_one_pending_profile() {
+        let profiles = PendingProfiles::default();
+        let now = Instant::now();
+        let profile = |email: &str| Profile {
+            name: String::new(),
+            email: email.into(),
+            avatar: None,
+        };
+        profiles.insert(b"other".to_vec(), 2, profile("b@example.com"), now);
+        // One user signing in over and over doesn't push anyone else out.
+        for i in 0..(MAX_PENDING_PROFILES * 2) {
+            profiles.insert(i.to_le_bytes().to_vec(), 1, profile("a@example.com"), now);
+        }
+        assert!(profiles.take(b"other", now).is_some());
+        let last = (MAX_PENDING_PROFILES * 2 - 1).to_le_bytes();
+        assert!(
+            profiles.take(&last, now).is_some(),
+            "the newest sign-in's profile"
+        );
+        assert!(
+            profiles.take(&0usize.to_le_bytes(), now).is_none(),
+            "replaced"
+        );
+    }
+
+    #[tokio::test]
+    async fn malformed_callback_query_redirects_with_an_error() {
+        let app = router(test_state());
+        let response = send(&app, get("/auth/google/callback?state=a&state=b", None)).await;
+        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        assert_eq!(location(&response), "/?auth_error=failed");
+    }
+
+    #[test]
     fn profiles_are_handed_over_once_and_expire() {
         let profiles = PendingProfiles::default();
         let profile = |email: &str| Profile {
@@ -652,8 +747,8 @@ mod tests {
             avatar: None,
         };
         let now = Instant::now();
-        profiles.insert(b"a".to_vec(), profile("a@example.com"), now);
-        profiles.insert(b"b".to_vec(), profile("b@example.com"), now);
+        profiles.insert(b"a".to_vec(), 1, profile("a@example.com"), now);
+        profiles.insert(b"b".to_vec(), 2, profile("b@example.com"), now);
 
         let taken = profiles.take(b"a", now).map(|p| p.email);
         assert_eq!(taken.as_deref(), Some("a@example.com"));
@@ -672,7 +767,9 @@ mod tests {
         let old_hash = hash_token(old.strip_prefix("solenna_session=").unwrap());
         state
             .db
-            .call(move |conn| login_user(conn, "sub-2", unix_now(), Some(old_hash)))
+            .call(move |conn| {
+                login_user(conn, "sub-2", unix_now(), Some(old_hash)).map(|(token, _)| token)
+            })
             .await
             .unwrap();
         // The old session is gone; the other device's session and the new one remain.
@@ -686,7 +783,7 @@ mod tests {
         let state = test_state();
         let token = state
             .db
-            .call(|conn| login_user(conn, "sub", NOW, None))
+            .call(|conn| login_user(conn, "sub", NOW, None).map(|(token, _)| token))
             .await
             .unwrap();
         let hash = hash_token(&token);

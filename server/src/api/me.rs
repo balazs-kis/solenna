@@ -44,12 +44,13 @@ pub async fn get(
     State(state): State<AppState>,
     user: CurrentUser,
 ) -> Result<Json<Value>, AppError> {
-    let profile = state.profiles.take(&user.session, Instant::now());
     let user_id = user.id;
     let settings = state
         .db
         .call(move |conn| Ok(read_settings(conn, user_id)?))
         .await?;
+    // Only now: if the read had failed, the one-time profile would be lost.
+    let profile = state.profiles.take(&user.session, Instant::now());
     let profile = profile.map(|profile| {
         json!({
             "name": profile.name,
@@ -145,6 +146,8 @@ pub async fn export(
 
 /// Hard-deletes the user. Their sessions, weigh-ins and periods go with them
 /// (`ON DELETE CASCADE`), and this browser's session cookie is cleared.
+/// secure_delete zeroes the rows, but in WAL mode the old pages stay in the
+/// files until a checkpoint, so one runs straight away (see `db::checkpoint`).
 pub async fn delete(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -154,6 +157,11 @@ pub async fn delete(
         .db
         .call(move |conn| {
             conn.execute("DELETE FROM users WHERE id = ?", [user_id])?;
+            // The account is gone at this point; a failed checkpoint mustn't
+            // turn that into an error (the next one catches up).
+            if crate::db::checkpoint(conn).is_err() {
+                tracing::error!("WAL checkpoint after an account deletion failed");
+            }
             Ok(())
         })
         .await?;
@@ -377,6 +385,51 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(counts, [1, 1, 1, 1, 1], "only Bob's rows remain");
+    }
+
+    #[tokio::test]
+    async fn deleted_accounts_leave_nothing_in_the_database_files() {
+        /// Removed again even if the test fails.
+        struct TempDir(std::path::PathBuf);
+        impl Drop for TempDir {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+        let temp = TempDir(
+            std::env::temp_dir().join(format!("solenna-delete-test-{}", std::process::id())),
+        );
+        let dir = temp.0.clone();
+        std::fs::create_dir_all(&dir).unwrap();
+        let state = crate::AppState::new(
+            crate::db::Db::open(&dir.join("solenna.db")).unwrap(),
+            crate::config::Config::for_tests(),
+        );
+        let alice = test_session(&state, "sub-a", "alice@example.com").await;
+        let app = router(state);
+        add_data(&app, &alice, 72_400).await;
+
+        // The user's row (and so its sub_hash) is somewhere in the files...
+        let marker = crate::auth::sub_hash("sub-a").into_bytes();
+        let files_contain = |marker: &[u8]| {
+            std::fs::read_dir(&dir).unwrap().any(|entry| {
+                let bytes = std::fs::read(entry.unwrap().path()).unwrap();
+                bytes.windows(marker.len()).any(|window| window == marker)
+            })
+        };
+        assert!(
+            files_contain(&marker),
+            "the test needs the marker to be there first"
+        );
+
+        let (status, _) = call(&app, "DELETE", "/api/me", &alice, None).await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        // ...and in none of them after the account is deleted, WAL included.
+        assert!(
+            !files_contain(&marker),
+            "deleted account still in the files"
+        );
+        drop(app); // Closes the database before TempDir removes it.
     }
 
     #[tokio::test]

@@ -80,7 +80,10 @@ async fn main() {
 
     let listener = tokio::net::TcpListener::bind(addr)
         .await
-        .unwrap_or_else(|e| panic!("failed to bind {addr}: {e}"));
+        .unwrap_or_else(|e| {
+            eprintln!("cannot listen on {addr}: {e}");
+            std::process::exit(1);
+        });
     tracing::info!("listening on port {}", addr.port());
 
     axum::serve(listener, router(state))
@@ -116,7 +119,7 @@ fn router(state: AppState) -> Router {
         .method_not_allowed_fallback(method_not_allowed)
         .fallback(web::static_handler)
         .layer(middleware::from_fn(require_json_for_writes))
-        .layer(middleware::map_response(security_headers))
+        .layer(middleware::from_fn(security_headers))
         .with_state(state)
 }
 
@@ -141,9 +144,16 @@ async fn require_json_for_writes(request: Request, next: Next) -> Response {
     }
 }
 
-/// Security headers required on every response.
-async fn security_headers(mut res: Response) -> Response {
+/// Security headers required on every response. API and sign-in responses
+/// (health data, session cookies) are also never stored in any cache.
+async fn security_headers(request: Request, next: Next) -> Response {
+    let path = request.uri().path();
+    let private = path == "/api" || path.starts_with("/api/") || path.starts_with("/auth/");
+    let mut res = next.run(request).await;
     let headers = res.headers_mut();
+    if private {
+        headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    }
     headers.insert(
         header::CONTENT_SECURITY_POLICY,
         HeaderValue::from_static(
@@ -281,6 +291,17 @@ mod tests {
                 "{uri}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn api_and_sign_in_responses_are_never_cached() {
+        for uri in ["/api/health", "/api/nope", "/auth/google"] {
+            let (_, headers, _) = send("GET", uri).await;
+            assert_eq!(headers[header::CACHE_CONTROL], "no-store", "{uri}");
+        }
+        // Static files are cached by the service worker instead.
+        let (_, headers, _) = send("GET", "/").await;
+        assert_eq!(headers[header::CACHE_CONTROL], "no-cache");
     }
 
     #[tokio::test]

@@ -18,7 +18,8 @@ FROM chef AS builder
 COPY --from=planner /app/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
 COPY . .
-RUN cargo build --release --bin solenna
+# --locked: build exactly the dependency versions in Cargo.lock.
+RUN cargo build --release --locked --bin solenna
 # Empty data dir to copy into the final image with the right owner.
 RUN mkdir /data
 

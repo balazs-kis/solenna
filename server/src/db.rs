@@ -52,6 +52,9 @@ impl Db {
     fn setup(mut conn: Connection) -> Result<Self, String> {
         configure(&conn).map_err(|e| format!("configuring connection: {e}"))?;
         migrate(&mut conn, MIGRATIONS)?;
+        // At every start: after migrations (which can rewrite tables), and to
+        // catch up on a checkpoint that a reader blocked earlier.
+        checkpoint(&conn).map_err(|e| format!("checkpoint at startup: {e}"))?;
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
         })
@@ -125,13 +128,20 @@ fn migrate(conn: &mut Connection, migrations: &[&str]) -> Result<(), String> {
             .map_err(|e| format!("migration {version} failed: {e}"))?;
         tracing::info!("applied database migration {version}");
     }
-    if applied < latest {
-        // Migrations can rewrite tables; empty the WAL so no copy of the old
-        // pages stays behind in it.
-        conn.pragma_update_and_check(None, "wal_checkpoint", "TRUNCATE", |_| Ok(()))
-            .map_err(|e| format!("checkpoint after migrations: {e}"))?;
-    }
     Ok(())
+}
+
+/// Copies the WAL into the database file and empties it, so no old copy of a
+/// page (say, of a deleted account) stays behind in it. It waits for readers
+/// (such as a running backup) up to `busy_timeout`. If one still holds the
+/// database after that, the WAL stays and this returns false; the next
+/// checkpoint (at the latest, the next start) catches up.
+pub fn checkpoint(conn: &Connection) -> rusqlite::Result<bool> {
+    let busy: i64 = conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| row.get(0))?;
+    if busy != 0 {
+        tracing::warn!("WAL checkpoint incomplete: a reader still held the database");
+    }
+    Ok(busy == 0)
 }
 
 #[cfg(test)]
@@ -259,6 +269,13 @@ mod tests {
         for gone in ["google_sub", "email", "name", "avatar", "avatar_type"] {
             assert!(!columns.iter().any(|c| c == gone), "{gone} still exists");
         }
+    }
+
+    #[test]
+    fn checkpoint_reports_completion() {
+        let db = Db::open_in_memory();
+        let conn = db.conn.lock().unwrap();
+        assert!(checkpoint(&conn).unwrap());
     }
 
     #[tokio::test]
