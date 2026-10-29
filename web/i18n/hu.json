@@ -39,7 +39,7 @@
   "weight.range1y": "1 év",
   "weight.rangeAll": "Mind",
   "weight.emptyRange": "Ebben az időszakban nincs mérés.",
-  "weight.chartLabel": "Testsúly grafikon: {from} – {to}",
+  "weight.chartLabel": "Testsúly grafikon: {from} – {to}, a mérésekkel és a trendvonallal",
   "weight.legendTrend": "Trend",
   "weight.legendWeighIn": "Mérés",
   "weight.history": "Előzmények",

@@ -52,7 +52,7 @@ web/               static frontend, served as-is
     dom.js         h() / svg() element helpers
     format.js      calendar-day math, Intl date / day-count / kg formatting
     cycle-math.js  cycle predictions (pure functions, no DOM)
-    weight-trend.js  weight trend line (pure function, no DOM)
+    weight-trend.js  weight trend line and its curve (pure functions, no DOM)
     store.js       state + subscribe
     snapshot.js    this device's copy of the user's data, for offline
     i18n.js        t() + language selection
