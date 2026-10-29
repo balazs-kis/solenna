@@ -616,7 +616,7 @@ h2 {
 .chart-line {
   fill: none;
   stroke: var(--accent);
-  stroke-width: 2;
+  stroke-width: 3;
   stroke-linejoin: round;
   stroke-linecap: round;
   vector-effect: non-scaling-stroke;
@@ -632,15 +632,18 @@ h2 {
   transform: translateY(-50%);
 }
 
+/* Weigh-ins: quieter than the trend line, which is what to read. */
+.chart-dot,
+.chart-legend-dot {
+  width: 6px;
+  height: 6px;
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 50%;
+}
+
 .chart-dot {
   position: absolute;
-  width: 8px;
-  height: 8px;
-  background: var(--accent);
-  border: 2px solid var(--surface);
-  border-radius: 50%;
   transform: translate(-50%, -50%);
-  box-sizing: content-box;
 }
 
 .chart-axis {
@@ -649,6 +652,30 @@ h2 {
   margin: 0.5rem 0 0 3.25rem;
   color: var(--text-muted);
   font-size: 0.75rem;
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem 1rem;
+  margin: 0.75rem 0 0 3.25rem;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  list-style: none;
+
+  & li {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+  }
+}
+
+.chart-legend-line {
+  width: 16px;
+  height: 3px;
+  background: var(--accent);
+  border-radius: 2px;
 }
 
 /* History list */
@@ -794,12 +821,8 @@ h3 {
     color: var(--text-muted);
   }
 
-  /* Background = phase. Each day has exactly one of these classes. */
-  &.phase-menstrual {
-    color: var(--text);
-    background: var(--period-soft);
-  }
-
+  /* Background = phase. Each day has exactly one of these classes. Menstrual
+     days are always logged or predicted bleeding, styled below. */
   &.phase-follicular {
     color: var(--text);
     background: var(--follicular-soft);

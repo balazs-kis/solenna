@@ -99,6 +99,7 @@ function renderDay(info, selected, onSelect) {
   // flow-0: a bleeding day without a logged strength.
   if (info.period === 'logged') classes.push('is-period', `flow-${info.flow ?? 0}`);
   else if (info.period === 'predicted') classes.push('is-predicted-period');
+  // Never 'menstrual' here: those days are always logged or predicted bleeding.
   else if (info.phase) classes.push(`phase-${info.phase}`);
   if (info.fertility) classes.push('has-marker');
   if (info.isToday) classes.push('is-today');

@@ -3,6 +3,7 @@ import { h } from '../dom.js';
 import { addDays, formatDay, formatKg, todayIso } from '../format.js';
 import { t } from '../i18n.js';
 import { getState, remember, setState } from '../store.js';
+import { weightTrend } from '../weight-trend.js';
 import { renderChart } from './weight-chart.js';
 
 export const title = 'weight.title';
@@ -79,6 +80,8 @@ export function render(container, state) {
   const today = todayIso();
   const from = range.days ? addDays(today, -range.days) : (state.weights[0]?.day ?? today);
   const inRange = state.weights.filter((entry) => entry.day >= from);
+  // From the whole history, so the line doesn't start from scratch at the range's edge.
+  const trend = weightTrend(state.weights).filter((entry) => entry.day >= from);
 
   container.append(
     h(
@@ -88,8 +91,8 @@ export function render(container, state) {
       state.weights.length === 0
         ? h('p', { class: 'card empty' }, t('weight.empty'))
         : [
-            renderSummary(state.weights.at(-1), inRange),
-            renderChartCard(range, inRange, from, today),
+            renderSummary(state.weights.at(-1), trend),
+            renderChartCard(range, inRange, trend, from, today),
             renderHistory(inRange, view, state.offline),
           ],
     ),
@@ -155,8 +158,12 @@ function renderForm(view, offline) {
   );
 }
 
-function renderSummary(latest, inRange) {
-  const change = inRange.length >= 2 ? inRange.at(-1).weight_g - inRange[0].weight_g : null;
+/**
+ * The latest weigh-in as it was measured, and the change over the range from
+ * the trend: the difference of two single weigh-ins is as noisy as they are.
+ */
+function renderSummary(latest, trend) {
+  const change = trend.length >= 2 ? trend.at(-1).weight_g - trend[0].weight_g : null;
   return h(
     'div',
     { class: 'card summary' },
@@ -174,7 +181,7 @@ function renderSummary(latest, inRange) {
   );
 }
 
-function renderChartCard(range, inRange, from, today) {
+function renderChartCard(range, inRange, trend, from, today) {
   return h(
     'section',
     { class: 'card stack' },
@@ -196,7 +203,7 @@ function renderChartCard(range, inRange, from, today) {
     ),
     inRange.length === 0
       ? h('p', { class: 'muted' }, t('weight.emptyRange'))
-      : renderChart(inRange, from, today),
+      : renderChart(inRange, trend, from, today),
   );
 }
 

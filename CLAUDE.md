@@ -52,6 +52,7 @@ web/               static frontend, served as-is
     dom.js         h() / svg() element helpers
     format.js      calendar-day math, Intl date / day-count / kg formatting
     cycle-math.js  cycle predictions (pure functions, no DOM)
+    weight-trend.js  weight trend line (pure function, no DOM)
     store.js       state + subscribe
     snapshot.js    this device's copy of the user's data, for offline
     i18n.js        t() + language selection
@@ -127,6 +128,7 @@ This app stores health data. Treat it accordingly.
 - **CSS:** modern plain CSS (custom properties, nesting, grid, container queries). Design mobile-first. Desktop gets a wider layout through media/container queries, not a separate UI. Theme colors are custom properties on `:root`, each written once as `light-dark(light, dark)`. The theme follows the OS (`color-scheme: light dark`) unless Settings saved a Light or Dark override on this device: `data-theme` on `<html>` switches `color-scheme`. Never add a separate dark-mode block of colors.
 - **Accessibility:** semantic HTML, real `<button>`s and `<label>`s, visible focus styles, and touch targets of at least 44px.
 - **"Today" is computed at render time** (`todayIso()`). `app.js` re-renders when the date changes (on returning to the app, and once a minute), so a screen left open overnight never uses yesterday's date. Don't cache today's date anywhere else.
+- **Weight chart:** the line is the trend (`weight-trend.js`: The Hacker's Diet's 10% exponential smoothing, adjusted for gaps between weigh-ins), drawn as a monotone cubic curve that never overshoots. The weigh-ins are faint dots under it. The summary's change over the range also comes from the trend. Don't connect the raw weigh-ins with a line: daily swings of half a kilo would hide the real change.
 - **Plurals:** don't write `{count} days` into translations. Format counts with `Intl` instead: `formatDays()` gives "1 day" / "5 days" / "5 nap", and `formatRelativeDay()` gives "tomorrow" / "in 9 days".
 
 ### Cycle tracking
