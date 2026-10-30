@@ -8,6 +8,10 @@ import { renderChart } from './weight-chart.js';
 
 export const title = 'weight.title';
 
+export function glow() {
+  return 'rose';
+}
+
 const ranges = [
   { id: '30d', days: 30, label: 'weight.range30d' },
   { id: '90d', days: 90, label: 'weight.range90d' },

@@ -5,7 +5,7 @@ import { activate, browserLanguage, detectLanguage, saveLanguage, t } from './i1
 import { startRouter } from './router.js';
 import { missingFromSnapshot, readSnapshot, updateSnapshot } from './snapshot.js';
 import { getState, setState, subscribe } from './store.js';
-import { applyTheme, savedTheme } from './theme.js';
+import { applyGlow, applyTheme, savedTheme } from './theme.js';
 import * as account from './views/account.js';
 import { avatar, displayName } from './views/avatar.js';
 import * as cycle from './views/cycle.js';
@@ -42,6 +42,7 @@ function render(state) {
   applyTheme(state.theme);
 
   if (state.user === undefined) {
+    applyGlow('neutral');
     root.replaceChildren(state.loadFailed ? renderLoadFailed(state) : '');
     return;
   }
@@ -50,6 +51,8 @@ function render(state) {
   if (!signedIn) loadedView = null;
   const view = signedIn ? (isAvailable(state.path, state.user) ? routes[state.path] : notFound) : login;
   document.title = `${t(view.title)} · ${t('app.name')}`;
+  // A view's optional glow() picks the colour behind it.
+  applyGlow(view.glow?.(state) ?? 'neutral');
 
   // Re-rendering replaces elements; keep keyboard focus on the same control.
   const focusedId = document.activeElement?.id;

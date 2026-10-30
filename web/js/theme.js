@@ -25,6 +25,20 @@ export function applyTheme(theme) {
   updateThemeColor();
 }
 
+let appliedGlow;
+
+/**
+ * The colour glow behind the screen ('neutral', 'rose', 'amber', 'teal' or
+ * 'lilac'); the CSS reads `data-glow` on <html>. Each glow has its own base
+ * colour, so the status bar follows it.
+ */
+export function applyGlow(glow) {
+  if (glow === appliedGlow) return;
+  appliedGlow = glow;
+  document.documentElement.dataset.glow = glow;
+  updateThemeColor();
+}
+
 /** The installed app's status bar takes the page's background colour. */
 function updateThemeColor() {
   const color = getComputedStyle(document.body).backgroundColor;

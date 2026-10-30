@@ -6,32 +6,97 @@
 :root {
   color-scheme: light dark;
 
-  --bg: light-dark(#faf8f9, #151215);
-  --surface: light-dark(#ffffff, #1f1a1e);
-  --text: light-dark(#1f1a1d, #f2edf0);
-  --text-muted: light-dark(#6b6268, #a89ea4);
-  --border: light-dark(#e7e1e4, #342c31);
-  --accent: light-dark(#b83a64, #f08cad);
-  --accent-soft: light-dark(#f9e6ed, #3a2430);
-  --on-accent: light-dark(#ffffff, #1f1a1d);
-  --error: light-dark(#b42318, #ff8a80);
-  --on-error: light-dark(#ffffff, #1f1a1d);
+  --text: light-dark(#1d1a1c, #f7f2f9);
+  --text-muted: light-dark(#5c5360, #bfb5c8);
+  --accent: light-dark(#b83a64, #ff8fb5);
+  --accent-soft: light-dark(rgb(184 58 100 / 0.12), rgb(255 143 181 / 0.16));
+  /* Small accent text (links, the active tab): glass over the light glows is
+     pinker than white, so it needs a darker shade for 4.5:1. */
+  --accent-text: light-dark(#9a2c55, #ff8fb5);
+  --on-accent: light-dark(#ffffff, #250f1a);
+  --error: light-dark(#b42318, #e5484d);
+  --on-error: #ffffff;
+  --separator: light-dark(rgb(31 26 29 / 0.08), rgb(255 255 255 / 0.1));
 
-  /* Cycle phases */
-  --period: light-dark(#d14468, #ee6d8f);
-  --period-soft: light-dark(#f7d4de, #4b2733);
-  --on-period: light-dark(#ffffff, #1f1a1d);
-  --fertile: light-dark(#16897e, #4fc2b5);
-  --fertile-soft: light-dark(#d2efeb, #173c38);
-  --on-fertile: light-dark(#ffffff, #10201e);
-  --follicular: light-dark(#b7791f, #e3ad55);
-  --follicular-soft: light-dark(#f8ead2, #3f3018);
-  --luteal: light-dark(#6f5bb5, #a998ea);
-  --luteal-soft: light-dark(#e6e0f6, #2e2747);
+  /* Frosted glass: cards, and the navigation bar floating above them. */
+  --glass: light-dark(rgb(255 255 255 / 0.55), rgb(255 255 255 / 0.07));
+  --glass-border: light-dark(rgb(255 255 255 / 0.8), rgb(255 255 255 / 0.11));
+  --glass-shadow: light-dark(0 6px 24px rgb(90 40 70 / 0.08), 0 8px 32px rgb(0 0 0 / 0.3));
+  --glass-blur: blur(24px) saturate(170%);
+  --bar: light-dark(rgb(255 255 255 / 0.45), rgb(255 255 255 / 0.09));
+  --bar-border: light-dark(rgb(255 255 255 / 0.85), rgb(255 255 255 / 0.18));
+  --bar-shadow: light-dark(0 10px 30px rgb(90 40 70 / 0.18), 0 10px 30px rgb(0 0 0 / 0.45));
+  --bar-blur: blur(28px) saturate(180%);
 
-  --radius: 12px;
+  /* Inputs and controls inside the glass */
+  --field: light-dark(rgb(255 255 255 / 0.6), rgb(255 255 255 / 0.07));
+  --field-border: light-dark(rgb(255 255 255 / 0.9), rgb(255 255 255 / 0.1));
+  --segmented: light-dark(rgb(255 255 255 / 0.45), rgb(255 255 255 / 0.08));
+  --segmented-active: light-dark(rgb(255 255 255 / 0.95), rgb(255 255 255 / 0.2));
+  --segmented-shadow: light-dark(0 1px 3px rgb(0 0 0 / 0.1), none);
+  --chart-dot: light-dark(rgb(184 58 100 / 0.4), rgb(255 143 181 / 0.5));
+
+  /* Cycle phases. The soft colours are translucent: they sit on glass. */
+  --period: light-dark(#d14468, #ff7aa0);
+  --period-soft: light-dark(rgb(209 68 104 / 0.18), rgb(255 122 160 / 0.24));
+  --on-period: light-dark(#ffffff, #250f1a);
+  --fertile: light-dark(#16897e, #5ee3d1);
+  --fertile-soft: light-dark(rgb(22 137 126 / 0.16), rgb(94 227 209 / 0.18));
+  --on-fertile: light-dark(#ffffff, #04241f);
+  --follicular: light-dark(#b7791f, #ffc46e);
+  --follicular-soft: light-dark(rgb(214 150 40 / 0.17), rgb(255 196 110 / 0.17));
+  --luteal: light-dark(#6f5bb5, #b4a6ff);
+  --luteal-soft: light-dark(rgb(111 91 181 / 0.16), rgb(170 150 255 / 0.2));
+
+  --radius: 24px;
+  --control-radius: 12px;
   --nav-height: 64px;
-  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+
+  /* The glow behind the page: three soft colour spots over a base colour
+     (--bg). The neutral one; screens pick another with `data-glow` on <html>. */
+  --bg: light-dark(#f7f2f6, #0c0a12);
+  --glow-1: light-dark(rgb(240 130 170 / 0.45), rgb(214 70 128 / 0.42));
+  --glow-2: light-dark(rgb(165 145 235 / 0.42), rgb(98 76 210 / 0.4));
+  --glow-3: light-dark(rgb(255 186 140 / 0.38), rgb(30 150 160 / 0.28));
+}
+
+:root[data-glow="rose"] {
+  --bg: light-dark(#f8f1f4, #100a10);
+  --glow-1: light-dark(rgb(240 120 165 / 0.5), rgb(220 70 130 / 0.45));
+  --glow-2: light-dark(rgb(255 160 190 / 0.4), rgb(170 50 110 / 0.35));
+  --glow-3: light-dark(rgb(255 180 150 / 0.35), rgb(200 90 90 / 0.22));
+}
+
+:root[data-glow="amber"] {
+  --bg: light-dark(#faf5ee, #110d09);
+  --glow-1: light-dark(rgb(245 180 90 / 0.5), rgb(210 140 40 / 0.42));
+  --glow-2: light-dark(rgb(255 205 140 / 0.42), rgb(190 110 50 / 0.32));
+  --glow-3: light-dark(rgb(240 150 170 / 0.25), rgb(200 80 120 / 0.18));
+}
+
+:root[data-glow="teal"] {
+  --bg: light-dark(#f0f7f6, #08100f);
+  --glow-1: light-dark(rgb(80 200 185 / 0.45), rgb(30 170 155 / 0.42));
+  --glow-2: light-dark(rgb(130 215 205 / 0.4), rgb(40 130 160 / 0.32));
+  --glow-3: light-dark(rgb(165 145 235 / 0.25), rgb(110 85 220 / 0.18));
+}
+
+:root[data-glow="lilac"] {
+  --bg: light-dark(#f4f1f9, #0b0a14);
+  --glow-1: light-dark(rgb(165 140 235 / 0.5), rgb(110 85 220 / 0.48));
+  --glow-2: light-dark(rgb(200 170 245 / 0.42), rgb(150 100 230 / 0.35));
+  --glow-3: light-dark(rgb(240 150 190 / 0.28), rgb(200 80 150 / 0.2));
+}
+
+/* Without transparency (a system setting; Chromium only so far), the glass is solid. */
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --glass: light-dark(#fdfafc, #1b1820);
+    --bar: light-dark(#fdfafc, #1f1c25);
+    --glass-blur: none;
+    --bar-blur: none;
+  }
 }
 
 :root[data-theme="light"] {
@@ -53,6 +118,8 @@ html {
   -webkit-text-size-adjust: 100%;
 }
 
+/* The body keeps the plain base colour: js/theme.js reads it for the
+   theme-color meta (the installed app's status bar). */
 body {
   margin: 0;
   background: var(--bg);
@@ -60,14 +127,36 @@ body {
   font: 16px/1.5 var(--font);
 }
 
+/* The glow, on its own fixed layer behind everything (iOS ignores
+   `background-attachment: fixed`). */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 12% 8%, var(--glow-1), transparent 45%),
+    radial-gradient(circle at 95% 35%, var(--glow-2), transparent 45%),
+    radial-gradient(circle at 20% 85%, var(--glow-3), transparent 45%);
+
+  @media (min-width: 768px) {
+    background:
+      radial-gradient(circle at 18% 6%, var(--glow-1), transparent 40%),
+      radial-gradient(circle at 92% 30%, var(--glow-2), transparent 42%),
+      radial-gradient(circle at 40% 95%, var(--glow-3), transparent 42%);
+  }
+}
+
 h1 {
   margin: 0 0 1rem;
-  font-size: 1.75rem;
+  font-size: 2.125rem;
   line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: 0.2px;
 }
 
 a {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 :focus-visible {
@@ -118,8 +207,10 @@ a {
   inset: auto 0 0;
   z-index: 10;
   padding-bottom: env(safe-area-inset-bottom);
-  background: var(--surface);
-  border-top: 1px solid var(--border);
+  background: var(--bar);
+  border-top: 1px solid var(--bar-border);
+  -webkit-backdrop-filter: var(--bar-blur);
+  backdrop-filter: var(--bar-blur);
 }
 
 .nav-brand {
@@ -151,13 +242,14 @@ a {
   text-decoration: none;
 
   &[aria-current="page"] {
-    color: var(--accent);
+    color: var(--accent-text);
   }
 }
 
 /* The account entry: the user's picture instead of an icon. Name and email only show on desktop. */
 .nav-account[aria-current="page"] .avatar {
-  box-shadow: 0 0 0 1.5px var(--surface), 0 0 0 3px var(--accent);
+  outline: 1.5px solid var(--accent);
+  outline-offset: 1.5px;
 }
 
 .nav-person {
@@ -184,7 +276,7 @@ a {
     height: 100dvh;
     padding: 1.5rem 0.75rem;
     border-top: none;
-    border-right: 1px solid var(--border);
+    border-right: 1px solid var(--bar-border);
   }
 
   .nav-brand {
@@ -281,12 +373,23 @@ a {
 }
 
 /* Components */
+/* Cards are frosted glass over the glow. Safari 17.5 needs the prefix. */
 .card {
   margin: 0;
-  padding: 1.25rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  padding: 1rem;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+
+h2 {
+  margin: 0;
+  font-size: 1.0625rem;
+  line-height: 1.3;
+  font-weight: 600;
 }
 
 .empty {
@@ -308,9 +411,9 @@ a {
     padding: 0 0.75rem;
     color: var(--text);
     font: inherit;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    background: var(--field);
+    border: 1px solid var(--field-border);
+    border-radius: var(--control-radius);
   }
 
   & input[readonly] {
@@ -336,7 +439,7 @@ a {
 }
 
 .avatar-monogram {
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: calc(var(--size) * 0.45);
   font-weight: 700;
   line-height: 1;
@@ -388,7 +491,7 @@ a {
 }
 
 .danger-zone {
-  border-color: color-mix(in srgb, var(--error) 40%, var(--border));
+  border-color: color-mix(in srgb, var(--error) 40%, transparent);
 }
 
 /* Checkbox setting: the label is the 44px touch target, the hint sits below it. */
@@ -418,11 +521,6 @@ a {
   }
 }
 
-h2 {
-  margin: 0;
-  font-size: 1.125rem;
-}
-
 .stack {
   display: grid;
   gap: 1rem;
@@ -450,13 +548,13 @@ h2 {
   text-decoration: none;
   background: var(--accent);
   border: 1px solid var(--accent);
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   cursor: pointer;
 
   &.secondary {
     color: var(--text);
-    background: transparent;
-    border-color: var(--border);
+    background: var(--field);
+    border-color: var(--separator);
   }
 
   &.danger {
@@ -486,9 +584,13 @@ h2 {
   margin: 0 0 1rem;
   padding: 0.75rem 1rem;
   color: var(--text);
-  background: var(--follicular-soft);
-  border: 1px solid var(--follicular);
+  /* Amber-tinted glass */
+  background: color-mix(in srgb, var(--follicular) 18%, var(--glass));
+  border: 1px solid color-mix(in srgb, var(--follicular) 45%, transparent);
   border-radius: var(--radius);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
 
   & p {
     flex: 1 1 16rem;
@@ -500,7 +602,7 @@ h2 {
 .link-button {
   min-height: 44px;
   padding: 0 0.5rem;
-  color: var(--accent);
+  color: var(--accent-text);
   font: inherit;
   background: none;
   border: none;
@@ -563,10 +665,9 @@ h2 {
 /* Segmented control (range switcher) */
 .segmented {
   display: flex;
-  padding: 4px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  padding: 3px;
+  background: var(--segmented);
+  border-radius: 13px;
 
   & button {
     flex: 1;
@@ -574,16 +675,17 @@ h2 {
     color: var(--text-muted);
     font: inherit;
     font-size: 0.875rem;
+    font-weight: 500;
     background: none;
     border: none;
-    border-radius: 7px;
+    border-radius: 10px;
     cursor: pointer;
 
     &[aria-pressed="true"] {
       color: var(--text);
       font-weight: 600;
-      background: var(--surface);
-      box-shadow: 0 1px 2px rgb(0 0 0 / 0.15);
+      background: var(--segmented-active);
+      box-shadow: var(--segmented-shadow);
     }
   }
 }
@@ -608,7 +710,7 @@ h2 {
 }
 
 .chart-grid {
-  stroke: var(--border);
+  stroke: var(--separator);
   stroke-width: 1;
   vector-effect: non-scaling-stroke;
 }
@@ -637,7 +739,7 @@ h2 {
 .chart-legend-dot {
   width: 6px;
   height: 6px;
-  background: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: var(--chart-dot);
   border-radius: 50%;
 }
 
@@ -691,7 +793,7 @@ h2 {
   align-items: center;
   gap: 0.25rem 1rem;
   padding: 0.25rem 0;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--separator);
 
   &:first-child {
     border-top: none;
@@ -814,7 +916,7 @@ h3 {
   font-variant-numeric: tabular-nums;
   background: transparent;
   border: 2px solid transparent;
-  border-radius: 10px;
+  border-radius: var(--control-radius);
   cursor: pointer;
 
   &.is-future {
@@ -863,8 +965,11 @@ h3 {
     text-underline-offset: 3px;
   }
 
+  /* An outline leaves a see-through gap; a box-shadow ring would need a fill
+     colour, and nothing matches the glass behind it. */
   &[aria-pressed="true"] {
-    box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--text);
+    outline: 2px solid var(--text);
+    outline-offset: 2px;
   }
 }
 
@@ -896,9 +1001,10 @@ h3 {
     color: var(--on-fertile);
   }
 
-  /* On bleeding days (short cycles), a thin outline keeps the teal readable on rose. */
+  /* On bleeding days (short cycles), a thin outline keeps the teal readable on
+     rose. --on-period contrasts with the period colour in both themes. */
   .is-period & {
-    filter: drop-shadow(0 0 1px var(--surface)) drop-shadow(0 0 1px var(--surface));
+    filter: drop-shadow(0 0 1px var(--on-period)) drop-shadow(0 0 1px var(--on-period));
   }
 }
 
@@ -955,7 +1061,7 @@ h3 {
 /* Selected day */
 .day-panel {
   padding-top: 1rem;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--separator);
 }
 
 .day-panel-title::first-letter {
@@ -990,9 +1096,9 @@ h3 {
   font: inherit;
   font-size: 0.75rem;
   line-height: 1.2;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  background: var(--field);
+  border: 1px solid var(--field-border);
+  border-radius: var(--control-radius);
   cursor: pointer;
 
   &[aria-pressed="true"] {
