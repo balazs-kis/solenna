@@ -1,4 +1,5 @@
-# The app's checks, without any Docker build: fmt, clippy and the tests.
+# The app's checks, without any Docker build: fmt, clippy, the Rust tests and
+# the frontend's logic tests (Node's built-in runner, no packages).
 # Runs on every push and pull request, and release.yml runs it before
 # building an image. Actions are pinned to commit SHAs (see release.yml).
 
@@ -25,6 +26,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The frontend's pure logic (cycle math, weight trend, formats). Node only
+      # runs the tests: no package.json, nothing installed. First, as it's fast.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      # A bug in the date math can send a day-by-day loop on forever, which no
+      # per-test timeout can stop: cap the step instead of GitHub's 6 hours.
+      - run: node --test "web-tests/*.test.js"
+        timeout-minutes: 2
 
       # The same toolchain as the Dockerfile's builder image.
       - run: |

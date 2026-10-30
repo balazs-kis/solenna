@@ -64,6 +64,7 @@ web/               static frontend, served as-is
     hu.json
   icons/           UI icons (SVG, used as CSS masks) + generated app icons (PNG)
 design/            not served: app icon sources (see "App icons" below)
+web-tests/         frontend logic tests (`node --test`, see Testing)
 Dockerfile
 compose.yaml
 .env.example       placeholder values only
@@ -196,12 +197,13 @@ For local dev, the app also reads `./.env` from the working directory, so `cargo
 - **Dockerfile:** multi-stage, using `cargo-chef` for dependency caching. It builds on `rust:<version>-alpine`, which produces a static musl binary natively for the host architecture, and runs it on `scratch` as uid 10001. TLS uses rustls (aws-lc-rs) with the platform certificate verifier. The Dockerfile copies Alpine's `ca-certificates.crt` into the image for it, so CA updates arrive with each rebuild. Keep the builder image version at or above `rust-version` in `server/Cargo.toml`.
 - The SQLite file lives on a volume mounted at `SOLENNA_DATA_DIR`. It is the only state.
 - **Platform:** images are built for `linux/amd64` only. The server is x86-64 and ARM isn't planned, so don't add other platforms.
-- **CI:** `.github/workflows/ci.yml` runs fmt, clippy and `cargo test --locked` (no Docker build) on every push and pull request. The release workflow calls it for its checks, so they are defined once.
-- **Releases:** `.github/workflows/release.yml` builds the image and pushes it to `ghcr.io/balazs-kis/solenna` when `version` in `server/Cargo.toml` has no `v<version>` git tag yet. It runs fmt, clippy and `cargo test --locked` first, and tags the commit after a successful push. Only the current head of `main` is released, also for manual runs. Actions are pinned to full commit SHAs (version in a comment); Dependabot proposes updates. Keep new actions pinned the same way. Bump the version (and commit the updated `Cargo.lock`) to release; nothing else triggers one. The server never builds: `compose.yaml` only pulls the image.
+- **CI:** `.github/workflows/ci.yml` runs the frontend logic tests (`node --test`), fmt, clippy and `cargo test --locked` (no Docker build) on every push and pull request. The release workflow calls it for its checks, so they are defined once.
+- **Releases:** `.github/workflows/release.yml` builds the image and pushes it to `ghcr.io/balazs-kis/solenna` when `version` in `server/Cargo.toml` has no `v<version>` git tag yet. It runs the CI checks (frontend logic tests, fmt, clippy and `cargo test --locked`) first, and tags the commit after a successful push. Only the current head of `main` is released, also for manual runs. Actions are pinned to full commit SHAs (version in a comment); Dependabot proposes updates. Keep new actions pinned the same way. Bump the version (and commit the updated `Cargo.lock`) to release; nothing else triggers one. The server never builds: `compose.yaml` only pulls the image.
 - **Hosting:** `compose.yaml` publishes the app on `127.0.0.1:37510` (localhost only) for Caddy running on the host, which terminates HTTPS. `compose.yaml` also hardens the container: `read_only`, `cap_drop: [ALL]`, `no-new-privileges`; the app writes only to `/data`, so keep it that way. The README has the deploy, backup (SQLite `.backup`, encrypted with `age` to a key that isn't on the server; never a plain copy while running), restore and breach-response steps. Dependabot proposes monthly updates for the actions and the crates. Use `solenna.example.com` in docs, never the real domain.
 
 ## Testing
 
 - Use `cargo test` for backend logic and API handlers, run against an in-memory SQLite database with migrations applied.
 - Every API resource gets at least one test proving **user A cannot read or modify user B's data**.
-- Frontend: no test framework. Keep logic out of views where practical so it stays simple to reason about.
+- **Frontend logic** has tests in `web-tests/` (`*.test.js`), run with Node's built-in runner: `node --test "web-tests/*.test.js"`. No test framework, no `package.json`, nothing installed: just `node:test` and `node:assert` importing the real modules from `web/js/`. CI pins the current Node LTS (26). They cover the pure modules (`cycle-math.js`, `weight-trend.js`, `format.js`); each test names the rule it checks. Every test file imports `./setup.js` first: it sets a time zone with daylight saving time (Budapest; CI runs in UTC, where date bugs can't show) and a `document` stand-in for `i18n.js`. The CI step has a 2-minute limit, because broken date math can loop forever. Views aren't tested (they need a DOM), so keep logic out of views where practical, in pure modules that can be tested this way. `web-tests/` lives outside `web/` so it's never served or cached by the service worker.
+- `cargo test` also checks `web/` itself: the service worker's `VERSION` and file list, and that the translations are complete (see i18n and PWA).
