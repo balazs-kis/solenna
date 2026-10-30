@@ -5,6 +5,24 @@ import { locale } from './i18n.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+const formatters = new Map();
+
+/**
+ * An Intl formatter (`Intl.DateTimeFormat`, `Intl.NumberFormat`, ...) for the
+ * active language, built once and then reused. Building one is slow (tens of
+ * microseconds), and a long weight history formats a date and a weight per
+ * entry on every render.
+ */
+export function formatter(Format, options) {
+  const key = `${Format.name} ${locale()} ${JSON.stringify(options)}`;
+  let format = formatters.get(key);
+  if (!format) {
+    format = new Format(locale(), options);
+    formatters.set(key, format);
+  }
+  return format;
+}
+
 /** Today's local calendar day. */
 export function todayIso() {
   const now = new Date();
@@ -30,30 +48,30 @@ export function addDays(day, days) {
 /** e.g. "Oct 26, 2026" / "2026. okt. 26." */
 export function formatDay(day) {
   const [year, month, date] = day.split('-').map(Number);
-  return new Intl.DateTimeFormat(locale(), { year: 'numeric', month: 'short', day: 'numeric' })
+  return formatter(Intl.DateTimeFormat, { year: 'numeric', month: 'short', day: 'numeric' })
     .format(new Date(year, month - 1, date));
 }
 
 /** e.g. "Tuesday, October 27" / "október 27., kedd" */
 export function formatDayLong(day) {
   const [year, month, date] = day.split('-').map(Number);
-  return new Intl.DateTimeFormat(locale(), { weekday: 'long', month: 'long', day: 'numeric' })
+  return formatter(Intl.DateTimeFormat, { weekday: 'long', month: 'long', day: 'numeric' })
     .format(new Date(year, month - 1, date));
 }
 
 /** `day` relative to `today`: "today", "tomorrow", "in 9 days", "3 days ago" (localized). */
 export function formatRelativeDay(day, today) {
-  return new Intl.RelativeTimeFormat(locale(), { numeric: 'auto' }).format(daysBetween(today, day), 'day');
+  return formatter(Intl.RelativeTimeFormat, { numeric: 'auto' }).format(daysBetween(today, day), 'day');
 }
 
 /** A number of days with the right plural: "1 day", "5 days", "5 nap". */
 export function formatDays(count) {
-  return new Intl.NumberFormat(locale(), { style: 'unit', unit: 'day', unitDisplay: 'long' }).format(count);
+  return formatter(Intl.NumberFormat, { style: 'unit', unit: 'day', unitDisplay: 'long' }).format(count);
 }
 
 /** Grams as kilograms with one decimal ("72.4" / "72,4"). `signed` adds +/−. */
 export function formatKg(grams, { signed = false } = {}) {
-  return new Intl.NumberFormat(locale(), {
+  return formatter(Intl.NumberFormat, {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
     signDisplay: signed ? 'exceptZero' : 'auto',

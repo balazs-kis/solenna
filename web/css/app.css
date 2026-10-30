@@ -59,6 +59,10 @@
 
   --radius: 24px;
   --control-radius: 12px;
+  /* Between a screen's cards (.columns and the lists of cards in them). */
+  --gap: 14px;
+  /* Hover: a light tint over a control's own background (see the end of this file). */
+  --hover: light-dark(rgb(31 26 29 / 0.07), rgb(255 255 255 / 0.09));
   /* The phone tab bar: its height (54px items, 6px padding, 1px border) and gap to the bottom */
   --nav-height: 68px;
   --nav-bottom: 26px;
@@ -67,6 +71,10 @@
   /* The base colour behind the page (the glow's spots sit on it, see
      body::before). The neutral one; screens pick another with `data-glow`. */
   --bg: light-dark(#f7f2f6, #0c0a12);
+
+  @media (min-width: 768px) {
+    --gap: 20px;
+  }
 }
 
 :root[data-glow="rose"] {
@@ -138,6 +146,7 @@
   :root {
     --glass: light-dark(#fdfafc, #1b1820);
     --bar: light-dark(#fdfafc, #1f1c25);
+    --sidebar: light-dark(#fdfafc, #1f1c25);
     --glass-blur: none;
     --bar-blur: none;
   }
@@ -449,11 +458,6 @@ a {
   }
 }
 
-@media (hover: hover) {
-  .nav-link:hover {
-    color: var(--text);
-  }
-}
 
 /* Hidden on screen, still read by screen readers. */
 .visually-hidden {
@@ -468,10 +472,11 @@ a {
 }
 
 /* Components */
-/* Cards are frosted glass over the glow. Safari 17.5 needs the prefix. */
-.card {
-  margin: 0;
-  padding: 1rem;
+/* Frosted glass over the glow: cards, the offline banner and the Sign out
+   button (.button.glass, which outranks .button). Safari 17.5 needs the prefix. */
+.card,
+.offline-banner,
+.button.glass {
   background: var(--glass);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius);
@@ -480,15 +485,17 @@ a {
   backdrop-filter: var(--glass-blur);
 }
 
-h2 {
+.card {
+  margin: 0;
+  padding: 1rem;
+}
+
+h2,
+h3 {
   margin: 0;
   font-size: 1.0625rem;
   line-height: 1.3;
   font-weight: 600;
-}
-
-.empty {
-  color: var(--text-muted);
 }
 
 .field {
@@ -560,11 +567,7 @@ h2 {
 .account-column {
   display: grid;
   align-content: start;
-  gap: 14px;
-
-  @media (min-width: 768px) {
-    gap: 20px;
-  }
+  gap: var(--gap);
 }
 
 /* A card of setting rows: the label left, the value or switch right,
@@ -729,18 +732,12 @@ h2 {
     border-color: var(--error);
   }
 
-  /* Full width, on glass like a card: Sign out. */
+  /* Full width, glass like a card (see .card): Sign out. */
   &.glass {
     width: 100%;
     min-height: 52px;
     color: var(--accent-text);
     font-size: 1.0625rem;
-    background: var(--glass);
-    border-color: var(--glass-border);
-    border-radius: var(--radius);
-    box-shadow: var(--glass-shadow);
-    -webkit-backdrop-filter: var(--glass-blur);
-    backdrop-filter: var(--glass-blur);
   }
 
   /* The screen's main action: the quick action, signing in. */
@@ -771,13 +768,9 @@ h2 {
   margin: 0 0 1rem;
   padding: 0.75rem 1rem;
   color: var(--text);
-  /* Amber-tinted glass */
+  /* Amber-tinted glass (see .card) */
   background: color-mix(in srgb, var(--follicular) 18%, var(--glass));
-  border: 1px solid color-mix(in srgb, var(--follicular) 45%, transparent);
-  border-radius: var(--radius);
-  box-shadow: var(--glass-shadow);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
+  border-color: color-mix(in srgb, var(--follicular) 45%, transparent);
 
   & p {
     flex: 1 1 16rem;
@@ -966,11 +959,7 @@ h2 {
    screen places its cards (e.g. .weight-columns). */
 .columns {
   display: grid;
-  gap: 14px;
-
-  @media (min-width: 768px) {
-    gap: 20px;
-  }
+  gap: var(--gap);
 
   @media (min-width: 1280px) {
     grid-template-columns: minmax(0, 1fr) 360px;
@@ -1259,11 +1248,6 @@ h2 {
 
 /* --- Cycle screen ------------------------------------------------------- */
 
-h3 {
-  margin: 0;
-  font-size: 1.0625rem;
-}
-
 .quick-action {
   display: flex;
   flex-wrap: wrap;
@@ -1300,12 +1284,6 @@ h3 {
   border: none;
   border-radius: 50%;
   cursor: pointer;
-
-  @media (hover: hover) {
-    &:hover {
-      background: var(--accent-soft);
-    }
-  }
 }
 
 /* Calendar */
@@ -1354,7 +1332,11 @@ h3 {
   display: grid;
   place-items: center;
   aspect-ratio: 1;
-  /* 44px tall even where seven columns leave less width. */
+  /* 44px tall even where seven columns leave less width. Through the aspect
+     ratio that would also make it 44px wide, and seven of those don't fit a
+     phone: min-width lets the columns shrink, width fills one. */
+  width: 100%;
+  min-width: 0;
   min-height: 44px;
   padding: 0;
   color: var(--text);
@@ -1585,20 +1567,15 @@ h3 {
 }
 
 /* Event cards: a coloured icon bubble per kind of event. */
-/* Spaced like the other cards (see .columns). */
 .events {
   display: grid;
-  gap: 14px;
+  gap: var(--gap);
   margin: 0;
   padding: 0;
   list-style: none;
 
   @media (min-width: 640px) {
     grid-template-columns: 1fr 1fr;
-  }
-
-  @media (min-width: 768px) {
-    gap: 20px;
   }
 }
 
@@ -1663,5 +1640,23 @@ h3 {
     width: 18px;
     height: 18px;
     margin-top: 2px;
+  }
+}
+
+/* Hover, for mice only. A control gets a light tint over its own background,
+   so one rule works on every colour (accent, glass, a calendar day's phase)
+   in both themes. */
+@media (hover: hover) {
+  :is(.button, .segmented button, .flow-option, .calendar-day, .icon-button):not(:disabled):hover {
+    background-image: linear-gradient(var(--hover), var(--hover));
+  }
+
+  .link-button:not(:disabled):hover {
+    text-decoration: underline;
+  }
+
+  /* Not the current page's: it keeps its accent colour. */
+  .nav-link:not([aria-current="page"]):hover {
+    color: var(--text);
   }
 }

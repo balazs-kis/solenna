@@ -58,7 +58,7 @@ export function render(container, state) {
 
   // Two columns on wide screens; on phones the first one, then the second.
   container.append(
-    h('h1', { tabindex: '-1' }, t('account.title')),
+    h('h1', { id: 'page-title', tabindex: '-1' }, t('account.title')),
     renderHero(state),
     h(
       'div',
@@ -241,7 +241,7 @@ function renderDeleteSection(view, offline) {
       ? h(
           'div',
           { class: 'confirm' },
-          h('span', {}, t('account.deleteConfirm')),
+          h('span', { class: 'muted' }, t('account.deleteConfirm')),
           h(
             'button',
             {

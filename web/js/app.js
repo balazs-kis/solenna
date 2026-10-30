@@ -54,8 +54,13 @@ function render(state) {
   // A view's optional glow() picks the colour behind it.
   applyGlow(view.glow?.(state) ?? 'neutral');
 
-  // Re-rendering replaces elements; keep keyboard focus on the same control.
+  // Re-rendering replaces elements; keep keyboard focus on the same control,
+  // and the position of anything scrolled inside the page (e.g. the weight
+  // history on wide screens). Both need the element to have an id.
   const focusedId = document.activeElement?.id;
+  const scrolled = [...root.querySelectorAll('[id]')]
+    .filter((element) => element.scrollTop > 0)
+    .map((element) => [element.id, element.scrollTop]);
 
   const main = h('main', { class: signedIn ? 'main' : 'main main-centered', id: 'main' });
   view.render(main, state);
@@ -68,8 +73,13 @@ function render(state) {
     window.scrollTo(0, 0);
     // After navigating, move focus to the new page's heading (screen readers announce it).
     main.querySelector('h1')?.focus();
-  } else if (focusedId) {
-    document.getElementById(focusedId)?.focus();
+  } else {
+    // Scroll first: focusing then scrolls the control into view if it needs to.
+    for (const [id, top] of scrolled) {
+      const element = document.getElementById(id);
+      if (element) element.scrollTop = top;
+    }
+    if (focusedId) document.getElementById(focusedId)?.focus();
   }
   renderedPath = state.path;
 

@@ -61,7 +61,7 @@ export async function load() {
 }
 
 export function render(container, state) {
-  container.append(h('h1', { tabindex: '-1' }, t('weight.title')));
+  container.append(h('h1', { id: 'page-title', tabindex: '-1' }, t('weight.title')));
   const view = state.weightUi ?? {};
 
   if (view.loadFailed) {
@@ -97,7 +97,7 @@ export function render(container, state) {
       { class: 'columns weight-columns' },
       renderForm(view, state.offline),
       state.weights.length === 0
-        ? h('p', { class: 'card empty weight-main' }, t('weight.empty'))
+        ? h('p', { class: 'card muted weight-main' }, t('weight.empty'))
         : [renderChartCard(range, inRange, trend, from, today), renderHistory(inRange, view, state.offline)],
     ),
   );
@@ -214,7 +214,8 @@ function renderHistory(inRange, view, offline) {
     view.deleteError && h('p', { class: 'error', role: 'alert' }, t('weight.deleteFailed')),
     h(
       'ul',
-      { class: 'entry-list' },
+      // The id keeps its scroll position across re-renders (see app.js).
+      { id: 'weight-entries', class: 'entry-list' },
       [...inRange].reverse().map((entry) => renderEntry(entry, view, offline)),
     ),
   );
@@ -224,7 +225,9 @@ function renderEntry(entry, view, offline) {
   const date = formatDay(entry.day);
   const actions =
     view.confirmDelete === entry.day
-      ? [
+      ? h(
+          'div',
+          { class: 'confirm' },
           h('span', { class: 'muted' }, t('weight.confirmDelete')),
           h(
             'button',
@@ -242,7 +245,7 @@ function renderEntry(entry, view, offline) {
             { type: 'button', class: 'button secondary small', onclick: () => cancelDelete(entry.day) },
             t('weight.cancel'),
           ),
-        ]
+        )
       : [
           h(
             'button',

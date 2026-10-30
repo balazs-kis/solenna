@@ -104,6 +104,63 @@ export function withoutFertility(analysis) {
 }
 
 /**
+ * Today at a glance, for the screen's header, quick action and event cards,
+ * which say the same things. `analysis` is what the screen shows (with or
+ * without fertility). The fertile window and ovulation are filled in either
+ * way; the screen only shows them with fertility info on.
+ */
+export function todayStatus(analysis) {
+  const { today, cycles } = analysis;
+  const info = analysis.dayInfo(today);
+  // A logged period covering today. Its days only count as the menstrual
+  // phase once there's real flow; before that it's spotting.
+  const bleeding = analysis.periodOn(today) ?? null;
+  const current = cycles[0];
+
+  // What day today is: of the period (from cycle day 1), of the spotting
+  // (from its first day), or of the cycle.
+  let day = null;
+  if (bleeding && info.phase === 'menstrual') {
+    day = { kind: 'period', number: daysBetween(cycleStart(bleeding, today), today) + 1 };
+  } else if (bleeding) {
+    day = { kind: 'spotting', number: daysBetween(bleeding.start_day, today) + 1 };
+  } else if (info.cycleDay) {
+    day = { kind: 'cycle', number: info.cycleDay };
+  }
+
+  const ongoing = bleeding?.end_day === null;
+  const fertile = cycles.find((c) => c.fertileEnd !== null && c.fertileEnd >= today);
+  const ovulation = cycles.find((c) => c.ovulation !== null && c.ovulation >= today);
+
+  return {
+    /** dayInfo() of today. */
+    info,
+    /** { kind: 'period' | 'spotting' | 'cycle', number }, or null before anything is logged. */
+    day,
+    /** Today is in a period (or spotting) not logged as ended yet. */
+    ongoing,
+    /** When an ongoing period is expected to end (never before today). */
+    expectedEnd: ongoing && day.kind === 'period' ? current.periodEnd : null,
+    /** The next period is overdue: since `expectedStart`, and whether that's already `late`. */
+    overdue: analysis.overdueBy > 0 ? { expectedStart: analysis.expectedStart, late: analysis.late } : null,
+    nextPeriod: cycles[1]?.start ?? null,
+    /** The first fertile window that hasn't ended; `thisCycle` if it's the current cycle's. */
+    fertile: fertile
+      ? {
+          start: fertile.fertileStart,
+          end: fertile.fertileEnd,
+          now: fertile.fertileStart <= today,
+          thisCycle: fertile === current,
+        }
+      : null,
+    /** The next estimated ovulation day, today included. */
+    ovulation: ovulation?.ovulation ?? null,
+    /** Some coming cycle is too short for an ovulation estimate (overdue predicts nothing). */
+    noOvulationEstimate: analysis.overdueBy === 0 && cycles.some((c) => c.predicted && c.ovulation === null),
+  };
+}
+
+/**
  * The last day an ongoing period covers so far: today, but never more than the
  * longest period we accept.
  */

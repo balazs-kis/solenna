@@ -46,3 +46,12 @@ test('Hungarian formats', () => {
   assert.equal(formatDay('2026-10-28'), '2026. okt. 28.');
   activate('en');
 });
+
+test('formatters are reused per language, so switching the language switches the format', () => {
+  activate('en');
+  assert.equal(formatDay('2026-10-28'), 'Oct 28, 2026');
+  activate('hu');
+  assert.equal(formatDay('2026-10-28'), '2026. okt. 28.');
+  activate('en');
+  assert.equal(formatDay('2026-10-28'), 'Oct 28, 2026');
+});

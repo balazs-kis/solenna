@@ -1,6 +1,6 @@
 import { h } from '../dom.js';
-import { formatDay } from '../format.js';
-import { locale, t } from '../i18n.js';
+import { formatDay, formatter } from '../format.js';
+import { t } from '../i18n.js';
 
 /** Bleeding strength 1..5 as i18n keys (literal, so the translation test sees them). */
 // The flow picker's five-in-a-row width (.flow-options in app.css) is worked
@@ -37,7 +37,7 @@ export function renderCalendar({ month, selected, analysis, onSelect, onMonth })
   const daysInMonth = new Date(year, monthNumber, 0).getDate();
   // getDay() is 0 for Sunday; shift so Monday is the first column.
   const leadingBlanks = (new Date(year, monthNumber - 1, 1).getDay() + 6) % 7;
-  const title = new Intl.DateTimeFormat(locale(), { month: 'long', year: 'numeric' })
+  const title = formatter(Intl.DateTimeFormat, { month: 'long', year: 'numeric' })
     .format(new Date(year, monthNumber - 1, 1));
   const currentMonth = analysis.today.slice(0, 7);
 
@@ -140,7 +140,7 @@ function describeDay(info) {
 
 /** Short weekday names, Monday first (2024-01-01 was a Monday). */
 function weekdayNames() {
-  const format = new Intl.DateTimeFormat(locale(), { weekday: 'short' });
+  const format = formatter(Intl.DateTimeFormat, { weekday: 'short' });
   return Array.from({ length: 7 }, (_, i) => format.format(new Date(2024, 0, 1 + i)));
 }
 

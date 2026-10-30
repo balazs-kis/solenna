@@ -4,7 +4,7 @@
 import './setup.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { analyzeCycle, assumedEnd, cycleStart, withoutFertility } from '../web/js/cycle-math.js';
+import { analyzeCycle, assumedEnd, cycleStart, todayStatus, withoutFertility } from '../web/js/cycle-math.js';
 import { addDays } from '../web/js/format.js';
 
 let nextId = 1;
@@ -187,4 +187,66 @@ test('a past start gets the average length as its end, never into the next perio
   assert.equal(assumedEnd('2026-09-04', logged, 5, '2026-10-30'), '2026-09-06');
   // Could still be going on: stays ongoing.
   assert.equal(assumedEnd('2026-10-28', [], 5, '2026-10-30'), null);
+});
+
+// todayStatus(): what the header, the quick action and the event cards say about today.
+
+test('today: the cycle day, the next period and this cycle\'s fertile window', () => {
+  const status = todayStatus(analyzeCycle(regular, '2026-10-18')); // ovulation day
+  assert.deepEqual(status.day, { kind: 'cycle', number: 14 });
+  assert.equal(status.ongoing, false);
+  assert.equal(status.expectedEnd, null);
+  assert.equal(status.overdue, null);
+  assert.equal(status.nextPeriod, '2026-11-02');
+  assert.deepEqual(status.fertile, { start: '2026-10-13', end: '2026-10-18', now: true, thisCycle: true });
+  assert.equal(status.ovulation, '2026-10-18');
+  assert.equal(status.noOvulationEstimate, false);
+});
+
+test('today: after this cycle\'s fertile window, the next one is the next cycle\'s', () => {
+  const status = todayStatus(analyzeCycle(regular, '2026-10-25'));
+  assert.deepEqual(status.fertile, { start: '2026-11-10', end: '2026-11-15', now: false, thisCycle: false });
+  assert.equal(status.ovulation, '2026-11-15');
+});
+
+test('today: an ongoing period counts from cycle day 1 and is expected to end, never before today', () => {
+  const ongoing = period('2026-10-28', null, { '2026-10-28': 1 }); // leading spotting
+  const history = periods('2026-08-31', '2026-09-28');
+  const status = todayStatus(analyzeCycle([...history, ongoing], '2026-10-30'));
+  assert.deepEqual(status.day, { kind: 'period', number: 2 });
+  assert.equal(status.ongoing, true);
+  assert.equal(status.expectedEnd, '2026-11-02'); // 5 days from Oct 29
+  // Bleeding longer than usual: the expected end moves along with today.
+  assert.equal(todayStatus(analyzeCycle([...history, ongoing], '2026-11-05')).expectedEnd, '2026-11-05');
+});
+
+test('today: ongoing spotting is counted from its first day and expects no end', () => {
+  const spotting = period('2026-10-28', null, { '2026-10-28': 1, '2026-10-29': 1 });
+  const status = todayStatus(analyzeCycle([...regular, spotting], '2026-10-29'));
+  assert.deepEqual(status.day, { kind: 'spotting', number: 2 });
+  assert.equal(status.ongoing, true);
+  assert.equal(status.expectedEnd, null);
+  // The cycle runs on: the next period is still due.
+  assert.equal(status.nextPeriod, '2026-11-02');
+});
+
+test('today: an overdue period predicts no next period and no fertile window', () => {
+  const status = todayStatus(analyzeCycle(regular, '2026-11-04'));
+  assert.deepEqual(status.day, { kind: 'cycle', number: 31 });
+  assert.deepEqual(status.overdue, { expectedStart: '2026-11-02', late: false });
+  assert.equal(status.nextPeriod, null);
+  assert.equal(status.fertile, null);
+  assert.equal(status.noOvulationEstimate, false);
+});
+
+test('today: short cycles say there is no ovulation estimate', () => {
+  const short = periods('2026-08-20', '2026-09-09', '2026-09-29', '2026-10-19');
+  assert.equal(todayStatus(analyzeCycle(short, '2026-10-25')).noOvulationEstimate, true);
+});
+
+test('today: nothing logged, nothing to say', () => {
+  const status = todayStatus(analyzeCycle([], '2026-10-30'));
+  assert.equal(status.day, null);
+  assert.equal(status.nextPeriod, null);
+  assert.equal(status.fertile, null);
 });

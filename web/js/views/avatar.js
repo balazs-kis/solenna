@@ -1,4 +1,5 @@
 import { h } from '../dom.js';
+import { formatter } from '../format.js';
 import { locale, t } from '../i18n.js';
 import { setState } from '../store.js';
 
@@ -36,6 +37,6 @@ export function displayName(user) {
 /** The first character as the user sees it (so "Á" or an emoji stays whole), from the name or else the email. */
 function monogram(profile) {
   const source = (profile?.name || profile?.email || '').trim();
-  const [first] = new Intl.Segmenter(locale(), { granularity: 'grapheme' }).segment(source);
+  const [first] = formatter(Intl.Segmenter, { granularity: 'grapheme' }).segment(source);
   return first ? first.segment.toLocaleUpperCase(locale()) : '?';
 }
