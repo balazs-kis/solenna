@@ -4,6 +4,7 @@ import { addDays, formatDay, formatKg, todayIso } from '../format.js';
 import { t } from '../i18n.js';
 import { getState, remember, setState } from '../store.js';
 import { weightTrend } from '../weight-trend.js';
+import { hero } from './hero.js';
 import { renderChart } from './weight-chart.js';
 
 export const title = 'weight.title';
@@ -87,18 +88,17 @@ export function render(container, state) {
   // From the whole history, so the line doesn't start from scratch at the range's edge.
   const trend = weightTrend(state.weights).filter((entry) => entry.day >= from);
 
+  // Phone order: form, chart, history. On wide screens the chart moves to the
+  // left column, the form and history stack on the right (see app.css).
   container.append(
+    state.weights.length > 0 && renderHero(state.weights.at(-1), trend),
     h(
       'div',
-      { class: 'stack' },
+      { class: 'columns weight-columns' },
       renderForm(view, state.offline),
       state.weights.length === 0
-        ? h('p', { class: 'card empty' }, t('weight.empty'))
-        : [
-            renderSummary(state.weights.at(-1), trend),
-            renderChartCard(range, inRange, trend, from, today),
-            renderHistory(inRange, view, state.offline),
-          ],
+        ? h('p', { class: 'card empty weight-main' }, t('weight.empty'))
+        : [renderChartCard(range, inRange, trend, from, today), renderHistory(inRange, view, state.offline)],
     ),
   );
 }
@@ -112,7 +112,7 @@ function renderForm(view, offline) {
 
   return h(
     'form',
-    { class: 'card stack', onsubmit: save, oninput: keepDraft },
+    { class: 'card stack weight-form', onsubmit: save, oninput: keepDraft },
     h('h2', {}, t(editing ? 'weight.editTitle' : 'weight.addTitle')),
     h(
       'div',
@@ -165,30 +165,24 @@ function renderForm(view, offline) {
 /**
  * The latest weigh-in as it was measured, and the change over the range from
  * the trend: the difference of two single weigh-ins is as noisy as they are.
+ * The change needs two trend points in the range; without them only the date shows.
  */
-function renderSummary(latest, trend) {
+function renderHero(latest, trend) {
   const change = trend.length >= 2 ? trend.at(-1).weight_g - trend[0].weight_g : null;
-  return h(
-    'div',
-    { class: 'card summary' },
-    h('span', { class: 'muted' }, t('weight.latest')),
-    h('span', { class: 'summary-value' }, t('weight.value', { value: formatKg(latest.weight_g) })),
-    h('span', { class: 'muted' }, formatDay(latest.day)),
-    change !== null &&
-      h(
-        'span',
-        { class: 'muted' },
-        t('weight.changeOver', {
-          change: t('weight.value', { value: formatKg(change, { signed: true }) }),
-        }),
-      ),
-  );
+  return hero({
+    value: formatKg(latest.weight_g),
+    unit: t('weight.unit'),
+    line1:
+      change !== null &&
+      t('weight.changeOver', { change: t('weight.value', { value: formatKg(change, { signed: true }) }) }),
+    line2: t('weight.latestOn', { date: formatDay(latest.day) }),
+  });
 }
 
 function renderChartCard(range, inRange, trend, from, today) {
   return h(
     'section',
-    { class: 'card stack' },
+    { class: 'card stack weight-main' },
     h(
       'div',
       { class: 'segmented', role: 'group', 'aria-label': t('weight.rangeLabel') },
@@ -215,7 +209,7 @@ function renderHistory(inRange, view, offline) {
   if (inRange.length === 0) return null;
   return h(
     'section',
-    { class: 'card stack' },
+    { class: 'card stack weight-history' },
     h('h2', { id: 'weight-history', tabindex: '-1' }, t('weight.history')),
     view.deleteError && h('p', { class: 'error', role: 'alert' }, t('weight.deleteFailed')),
     h(

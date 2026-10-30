@@ -296,7 +296,15 @@ a {
 
   .main {
     width: 100%;
-    padding: 2.5rem 2rem;
+    padding: 2.75rem 3.5rem;
+  }
+
+  /* Screens with two columns get the wide layout (1056px of content), from
+     the width where the second column appears (see .columns). */
+  @media (min-width: 1280px) {
+    .main:has(> .columns) {
+      max-width: calc(1056px + 2 * 3.5rem);
+    }
   }
 
   .nav {
@@ -692,16 +700,130 @@ h2 {
   gap: 0.75rem;
 }
 
-/* Weight summary */
-.summary {
-  display: grid;
-  gap: 0.25rem;
+/* The header under the title (views/hero.js): the key value, big, and two
+   plain lines. Phone: the lines under the value; desktop: to its right,
+   bottom-aligned with it. */
+.hero {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: -2px 0 22px;
+
+  & p {
+    margin: 0;
+  }
+
+  @media (min-width: 768px) {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 6px 24px;
+    margin: -10px 0 24px;
+  }
 }
 
-.summary-value {
-  font-size: 2rem;
+.hero-value {
+  font-size: 3.5rem;
   font-weight: 700;
-  line-height: 1.2;
+  line-height: 1.07;
+  letter-spacing: -1px;
+
+  @media (min-width: 768px) {
+    font-size: 4rem;
+    line-height: 1.0625;
+    letter-spacing: -1.5px;
+  }
+}
+
+.hero-unit {
+  color: var(--text-muted);
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: 0;
+
+  @media (min-width: 768px) {
+    font-size: 1.625rem;
+  }
+}
+
+.hero-lines {
+  display: grid;
+  gap: 2px;
+
+  @media (min-width: 768px) {
+    padding-bottom: 10px;
+  }
+}
+
+.hero-line1 {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.hero-line2 {
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+  line-height: 1.33;
+}
+
+/* A screen's cards. On phones one column; on wide screens the main card
+   (chart, calendar) on the left and a 360px column on the right. Each
+   screen places its cards (e.g. .weight-columns). */
+.columns {
+  display: grid;
+  gap: 14px;
+
+  @media (min-width: 768px) {
+    gap: 20px;
+  }
+
+  @media (min-width: 1280px) {
+    grid-template-columns: minmax(0, 1fr) 360px;
+    align-items: start;
+  }
+}
+
+/* Weight: the chart on the left across both rows; the form and the history
+   on the right. The history ends level with the chart and scrolls inside:
+   `contain: size` keeps its length from stretching the rows. */
+@media (min-width: 1280px) {
+  .weight-columns {
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      "main form"
+      "main history";
+  }
+
+  .weight-main {
+    grid-area: main;
+
+    /* Wide: the range switch sits top right, at most 380px. */
+    & .segmented {
+      justify-self: end;
+      width: min(380px, 100%);
+    }
+  }
+
+  .weight-form {
+    grid-area: form;
+  }
+
+  .weight-history {
+    display: flex;
+    flex-direction: column;
+    grid-area: history;
+    align-self: stretch;
+    min-height: 15rem;
+    contain: size;
+
+    & .entry-list {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      scrollbar-width: thin;
+    }
+  }
 }
 
 /* Segmented control (range switcher) */
@@ -742,6 +864,10 @@ h2 {
   height: 200px;
   margin: 0.5rem 0 0 3.25rem;
 
+  @media (min-width: 1280px) {
+    height: 340px;
+  }
+
   & svg {
     position: absolute;
     inset: 0;
@@ -764,6 +890,10 @@ h2 {
   stroke-linejoin: round;
   stroke-linecap: round;
   vector-effect: non-scaling-stroke;
+
+  @media (min-width: 1280px) {
+    stroke-width: 3.5;
+  }
 }
 
 .chart-tick {
@@ -783,6 +913,14 @@ h2 {
   height: 6px;
   background: var(--chart-dot);
   border-radius: 50%;
+}
+
+@media (min-width: 1280px) {
+  .chart-dot,
+  .chart-legend-dot {
+    width: 7px;
+    height: 7px;
+  }
 }
 
 .chart-dot {
