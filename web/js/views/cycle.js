@@ -169,7 +169,7 @@ function renderHero(analysis, showFertility) {
     line2 = t('cycle.nextPeriod', { when: formatRelativeDay(cycles[1].start, today) });
   }
 
-  return hero({ value, words: true, line1, line2 });
+  return hero({ value, size: 'words', line1, line2 });
 }
 
 /**

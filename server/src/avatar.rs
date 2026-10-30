@@ -7,8 +7,8 @@ use std::time::Duration;
 
 use reqwest::Url;
 
-/// Google resizes pictures on request. The largest avatar is 96 CSS px (the
-/// Account screen); 4x covers phone screens up to about 3.5 device pixels per CSS px.
+/// Google resizes pictures on request. The largest avatar is 72 CSS px (the
+/// Account header); over 5x that covers any phone screen's device pixels per CSS px.
 const SIZE_PX: u32 = 384;
 /// A 384px JPEG is usually 25–50 KB; anything far bigger isn't what we asked for.
 const MAX_BYTES: usize = 200 * 1024;

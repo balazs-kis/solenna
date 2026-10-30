@@ -121,6 +121,7 @@
   "cycle.typicalPeriodLength": "Tipikus menstruációhossz, amíg egy rögzített menstruáció véget nem ér.",
   "account.title": "Fiók",
   "account.googleAccount": "Google-fiók",
+  "account.signedInWithGoogle": "Bejelentkezve Google-fiókkal",
   "account.language": "Nyelv",
   "account.languageDevice": "Az eszköz szerint",
   "account.logout": "Kijelentkezés",

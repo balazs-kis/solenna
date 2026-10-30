@@ -121,6 +121,7 @@
   "cycle.typicalPeriodLength": "Typical period length until a logged period has ended.",
   "account.title": "Account",
   "account.googleAccount": "Google account",
+  "account.signedInWithGoogle": "Signed in with Google",
   "account.language": "Language",
   "account.languageDevice": "Same as device",
   "account.logout": "Sign out",

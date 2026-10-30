@@ -43,6 +43,7 @@
   --segmented-active: light-dark(rgb(255 255 255 / 0.95), rgb(255 255 255 / 0.2));
   --segmented-shadow: 0 1px 3px light-dark(rgb(0 0 0 / 0.1), transparent);
   --chart-dot: light-dark(rgb(184 58 100 / 0.4), rgb(255 143 181 / 0.5));
+  --switch-off: light-dark(rgb(31 26 29 / 0.2), rgb(255 255 255 / 0.18));
 
   /* Cycle phases. The soft colours are translucent: they sit on glass. */
   --period: light-dark(#d14468, #ff7aa0);
@@ -483,9 +484,13 @@ h2 {
   object-fit: cover;
 }
 
-/* The download is 384px, 4x this size; raise it in avatar.rs if this grows. */
+/* The download is 384px, over 5x this size; raise it in avatar.rs if this grows. */
 .avatar-large {
-  --size: 96px;
+  --size: 64px;
+
+  @media (min-width: 768px) {
+    --size: 72px;
+  }
 }
 
 .avatar-monogram {
@@ -494,45 +499,6 @@ h2 {
   font-weight: 700;
   line-height: 1;
   background: var(--accent-soft);
-}
-
-/* Account screen: picture, name and email, and the sign-out button. */
-.profile {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: 1rem;
-
-  & .button {
-    grid-column: 1 / -1;
-    justify-self: start;
-  }
-
-  @media (min-width: 480px) {
-    grid-template-columns: auto 1fr auto;
-
-    & .button {
-      grid-column: auto;
-    }
-  }
-}
-
-.profile-text {
-  min-width: 0;
-
-  & p {
-    margin: 0;
-    overflow-wrap: anywhere;
-  }
-}
-
-.profile-name {
-  font-size: 1.125rem;
-  font-weight: 600;
-}
-
-.profile-note {
-  grid-column: 1 / -1;
 }
 
 .app-version {
@@ -544,30 +510,134 @@ h2 {
   border-color: color-mix(in srgb, var(--error) 40%, transparent);
 }
 
-/* Checkbox setting: the label is the 44px touch target, the hint sits below it. */
-.toggle {
+/* Account: the two columns' cards (on phones the first column, then the second). */
+.account-column {
   display: grid;
-  grid-template-columns: auto 1fr;
-  column-gap: 0.75rem;
-  align-items: center;
+  align-content: start;
+  gap: 14px;
 
-  & input {
-    width: 1.25rem;
-    height: 1.25rem;
-    margin: 0;
-    accent-color: var(--accent);
+  @media (min-width: 768px) {
+    gap: 20px;
+  }
+}
+
+/* A card of setting rows: the label left, the value or switch right,
+   separators between the rows, a hint under a row where it has one. */
+.settings {
+  display: grid;
+  padding: 6px 16px;
+
+  & h2 {
+    padding: 10px 0 4px;
   }
 
+  @media (min-width: 768px) {
+    padding: 8px 20px;
+
+    & h2 {
+      padding: 12px 0 6px;
+    }
+  }
+}
+
+.setting {
+  border-top: 1px solid var(--separator);
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+
   & label {
-    display: flex;
-    align-items: center;
-    min-height: 44px;
-    font-weight: 600;
+    flex: 1 1 auto;
     cursor: pointer;
   }
 
-  & p {
-    grid-column: 2;
+  @media (min-width: 768px) {
+    min-height: 56px;
+  }
+}
+
+.setting-hint {
+  padding-bottom: 12px;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+/* A native select shown as the row's value: muted, with an up/down chevron. */
+.setting-select {
+  position: relative;
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+
+  & select {
+    min-height: 44px;
+    padding: 0 26px 0 8px;
+    color: inherit;
+    font: inherit;
+    text-align: end;
+    text-align-last: end;
+    background: none;
+    border: none;
+    border-radius: var(--control-radius);
+    cursor: pointer;
+    appearance: none;
+  }
+
+  &::after {
+    content: "";
+    position: absolute;
+    right: 2px;
+    width: 18px;
+    height: 18px;
+    background-color: currentColor;
+    mask: url("../icons/chevron-up-down.svg") center / contain no-repeat;
+    pointer-events: none;
+  }
+}
+
+/* A checkbox drawn as a switch. The knob is a background layer that slides
+   over, so no pseudo-elements on the input are needed. */
+.switch {
+  flex: none;
+  width: 51px;
+  height: 31px;
+  margin: 0;
+  background:
+    radial-gradient(circle, #ffffff 0 12.5px, rgb(0 0 0 / 0.14) 13px, transparent 14px) 0 0 / 31px 31px no-repeat,
+    var(--switch-off);
+  border-radius: 999px;
+  cursor: pointer;
+  appearance: none;
+  transition: background-position 0.2s, background-color 0.2s;
+
+  &:checked {
+    background-color: var(--accent);
+    background-position: 20px 0;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+
+  /* High-contrast mode replaces background colours, which would hide the
+     track and the knob: draw both in system colours instead. */
+  @media (forced-colors: active) {
+    forced-color-adjust: none;
+    background:
+      radial-gradient(circle, CanvasText 0 10.5px, transparent 11px) 0 0 / 31px 31px no-repeat,
+      Canvas;
+    border: 1px solid CanvasText;
+
+    &:checked {
+      background:
+        radial-gradient(circle, HighlightText 0 10.5px, transparent 11px) 20px 0 / 31px 31px no-repeat,
+        Highlight;
+      border-color: Highlight;
+    }
   }
 }
 
@@ -613,6 +683,20 @@ h2 {
     border-color: var(--error);
   }
 
+  /* Full width, on glass like a card: Sign out. */
+  &.glass {
+    width: 100%;
+    min-height: 52px;
+    color: var(--accent-text);
+    font-size: 1.0625rem;
+    background: var(--glass);
+    border-color: var(--glass-border);
+    border-radius: var(--radius);
+    box-shadow: var(--glass-shadow);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+  }
+
   /* Less padding, same 44px touch height. */
   &.small {
     padding: 0 0.75rem;
@@ -620,7 +704,7 @@ h2 {
 }
 
 /* Controls that save are disabled while offline. */
-:is(.button, .link-button, .flow-option, .field select, .toggle input):disabled {
+:is(.button, .link-button, .flow-option, select, .switch):disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }
@@ -750,6 +834,44 @@ h2 {
   }
 }
 
+/* A person's name, next to their picture (Account). */
+.hero-value-name {
+  font-size: 1.75rem;
+  line-height: 1.21;
+  letter-spacing: -0.3px;
+  overflow-wrap: anywhere;
+
+  @media (min-width: 768px) {
+    font-size: 3rem;
+    line-height: 1.17;
+    letter-spacing: -1px;
+  }
+}
+
+/* The header with a picture: picture left, the name and lines beside it. */
+.hero-person {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: -2px 0 22px;
+
+  & .hero {
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: 2px;
+    margin: 0;
+  }
+
+  @media (min-width: 768px) {
+    gap: 20px;
+    margin: -6px 0 24px;
+
+    & .hero {
+      gap: 2px 24px;
+    }
+  }
+}
+
 .hero-unit {
   color: var(--text-muted);
   font-size: 1.5rem;
@@ -761,9 +883,12 @@ h2 {
   }
 }
 
+/* The lines can hold user data (an email address): let long words break
+   instead of widening the page. */
 .hero-lines {
   display: grid;
   gap: 2px;
+  overflow-wrap: anywhere;
 
   @media (min-width: 768px) {
     padding-bottom: 10px;

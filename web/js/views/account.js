@@ -5,6 +5,7 @@ import { browserLanguage, saveLanguage, t } from '../i18n.js';
 import { getState, SIGNED_OUT, setState } from '../store.js';
 import { saveTheme } from '../theme.js';
 import { avatar, displayName } from './avatar.js';
+import { hero } from './hero.js';
 
 export const title = 'account.title';
 
@@ -55,112 +56,157 @@ export function render(container, state) {
   // Everything here saves to the server, except the theme.
   const offline = state.offline;
 
+  // Two columns on wide screens; on phones the first one, then the second.
   container.append(
     h('h1', { tabindex: '-1' }, t('account.title')),
+    renderHero(state),
     h(
       'div',
-      { class: 'stack' },
-      renderProfile(state, view),
-      view.saveFailed && h('p', { class: 'card error', role: 'alert' }, t(view.saveFailed)),
+      { class: 'columns account-columns' },
       h(
-        'section',
-        { class: 'card stack' },
-        h('h2', {}, t('account.display')),
+        'div',
+        { class: 'account-column' },
+        view.saveFailed && h('p', { class: 'card error', role: 'alert' }, t(view.saveFailed)),
         h(
-          'div',
-          { class: 'field' },
-          h('label', { for: 'language' }, t('account.language')),
-          h(
-            'select',
-            { id: 'language', disabled: offline, onchange: (event) => changeLanguage(event.target.value) },
-            languageOptions.map(({ code, label }) =>
-              h('option', { value: code, selected: (settings.language ?? 'device') === code }, t(label)),
-            ),
-          ),
-        ),
-        h(
-          'div',
-          { class: 'field' },
-          h('label', { for: 'theme' }, t('account.theme')),
-          h(
-            'select',
-            { id: 'theme', 'aria-describedby': 'theme-hint', onchange: (event) => changeTheme(event.target.value) },
-            themeOptions.map(({ value, label }) =>
-              h('option', { value, selected: state.theme === value }, t(label)),
-            ),
-          ),
-          h('p', { id: 'theme-hint', class: 'muted' }, t('account.themeHint')),
-        ),
-      ),
-      h(
-        'section',
-        { class: 'card stack' },
-        h('h2', {}, t('account.cycle')),
-        toggle({
-          id: 'track-cycle',
-          label: t('account.trackCycle'),
-          hint: t('account.trackCycleHint'),
-          checked: settings.track_cycle,
-          disabled: offline,
-          onchange: (checked) => saveSettings({ track_cycle: checked }),
-        }),
-        settings.track_cycle &&
-          toggle({
-            id: 'show-fertility',
-            label: t('account.showFertility'),
-            hint: t('account.showFertilityHint'),
-            checked: settings.show_fertility,
+          'section',
+          { class: 'card settings' },
+          h('h2', {}, t('account.display')),
+          selectRow({
+            id: 'language',
+            label: t('account.language'),
             disabled: offline,
-            onchange: (checked) => saveSettings({ show_fertility: checked }),
+            onchange: changeLanguage,
+            options: languageOptions.map(({ code, label }) => ({
+              value: code,
+              label: t(label),
+              selected: (settings.language ?? 'device') === code,
+            })),
           }),
+          // The language is saved in the account; only the theme stays on this device.
+          selectRow({
+            id: 'theme',
+            label: t('account.theme'),
+            hint: t('account.themeHint'),
+            onchange: changeTheme,
+            options: themeOptions.map(({ value, label }) => ({ value, label: t(label), selected: state.theme === value })),
+          }),
+        ),
+        h(
+          'section',
+          { class: 'card settings' },
+          h('h2', {}, t('account.cycle')),
+          switchRow({
+            id: 'track-cycle',
+            label: t('account.trackCycle'),
+            hint: t('account.trackCycleHint'),
+            checked: settings.track_cycle,
+            disabled: offline,
+            onchange: (checked) => saveSettings({ track_cycle: checked }),
+          }),
+          settings.track_cycle &&
+            switchRow({
+              id: 'show-fertility',
+              label: t('account.showFertility'),
+              hint: t('account.showFertilityHint'),
+              checked: settings.show_fertility,
+              disabled: offline,
+              onchange: (checked) => saveSettings({ show_fertility: checked }),
+            }),
+        ),
+        renderSignOut(state, view),
       ),
-      renderDataSection(view, offline),
-      renderDeleteSection(view, offline),
-      state.appVersion && h('p', { class: 'muted app-version' }, t('account.version', { version: state.appVersion })),
+      h(
+        'div',
+        { class: 'account-column' },
+        renderDataSection(view, offline),
+        renderDeleteSection(view, offline),
+        state.appVersion && h('p', { class: 'muted app-version' }, t('account.version', { version: state.appVersion })),
+      ),
     ),
   );
 }
 
-/** Who is signed in (name and picture come from Google), and signing out. */
-function renderProfile(state, view) {
+/** Who is signed in: picture, name and email (from Google, kept on this device only). */
+function renderHero(state) {
   const { primary, secondary } = displayName(state.user);
+  return hero({
+    picture: avatar(state, 'large'),
+    value: primary,
+    size: 'name',
+    line1: secondary,
+    line2: t('account.signedInWithGoogle'),
+  });
+}
+
+/**
+ * Signing out needs the server. Offline, the button removes this device's
+ * copy of the data instead, and the hint says what that means.
+ */
+function renderSignOut(state, view) {
   return h(
-    'section',
-    { class: 'card profile' },
-    avatar(state, 'large'),
-    h(
-      'div',
-      { class: 'profile-text' },
-      h('p', { class: 'profile-name' }, primary),
-      secondary && h('p', { class: 'muted' }, secondary),
-    ),
+    'div',
+    { class: 'stack' },
     state.offline
       ? h(
           'button',
-          { type: 'button', id: 'remove-local', class: 'button secondary', onclick: removeLocalData },
+          { type: 'button', id: 'remove-local', class: 'button glass', onclick: removeLocalData },
           t('account.removeLocal'),
         )
-      : h('button', { type: 'button', id: 'logout', class: 'button secondary', onclick: logout }, t('account.logout')),
-    state.offline && h('p', { class: 'muted profile-note' }, t('account.removeLocalHint')),
-    view.logoutFailed && h('p', { class: 'error profile-note', role: 'alert' }, t(view.logoutFailed)),
+      : h('button', { type: 'button', id: 'logout', class: 'button glass', onclick: logout }, t('account.logout')),
+    state.offline && h('p', { class: 'muted' }, t('account.removeLocalHint')),
+    view.logoutFailed && h('p', { class: 'error', role: 'alert' }, t(view.logoutFailed)),
   );
 }
 
-/** A checkbox with its label and a hint below; the label is the 44px touch target. */
-function toggle({ id, label, hint, checked, disabled, onchange }) {
+/** A setting row: the label left, a native select right (showing its value), an optional hint below. */
+function selectRow({ id, label, hint, disabled, onchange, options }) {
   return h(
     'div',
-    { class: 'toggle' },
-    h('input', {
-      type: 'checkbox',
-      id,
-      checked,
-      disabled,
-      'aria-describedby': `${id}-hint`,
-      onchange: (event) => onchange(event.target.checked),
-    }),
-    h('label', { for: id }, label),
-    h('p', { id: `${id}-hint`, class: 'muted' }, hint),
+    { class: 'setting' },
+    h(
+      'div',
+      { class: 'setting-row' },
+      h('label', { for: id }, label),
+      h(
+        'span',
+        { class: 'setting-select' },
+        h(
+          'select',
+          { id, disabled, 'aria-describedby': hint && `${id}-hint`, onchange: (event) => onchange(event.target.value) },
+          options.map((o) => h('option', { value: o.value, selected: o.selected }, o.label)),
+        ),
+      ),
+    ),
+    hint && h('p', { id: `${id}-hint`, class: 'muted setting-hint' }, hint),
+  );
+}
+
+/**
+ * A setting row with a switch: a real checkbox styled as a switch (and
+ * announced as one), so keyboard and screen readers work as usual. The switch
+ * itself is only 51x31px: the 44px touch target comes from the full-width
+ * label in the row, so every switch needs one.
+ */
+function switchRow({ id, label, hint, checked, disabled, onchange }) {
+  return h(
+    'div',
+    { class: 'setting' },
+    h(
+      'div',
+      { class: 'setting-row' },
+      h('label', { for: id }, label),
+      h('input', {
+        type: 'checkbox',
+        role: 'switch',
+        class: 'switch',
+        id,
+        checked,
+        disabled,
+        'aria-describedby': `${id}-hint`,
+        onchange: (event) => onchange(event.target.checked),
+      }),
+    ),
+    h('p', { id: `${id}-hint`, class: 'muted setting-hint' }, hint),
   );
 }
 
