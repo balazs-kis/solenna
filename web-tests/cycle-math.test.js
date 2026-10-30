@@ -4,7 +4,7 @@
 import './setup.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { analyzeCycle, assumedEnd, cycleStart, todayStatus, withoutFertility } from '../web/js/cycle-math.js';
+import { analyzeCycle, assumedEnd, checkPastPeriods, cycleStart, todayStatus, withoutFertility } from '../web/js/cycle-math.js';
 import { addDays } from '../web/js/format.js';
 
 let nextId = 1;
@@ -249,4 +249,53 @@ test('today: nothing logged, nothing to say', () => {
   assert.equal(status.day, null);
   assert.equal(status.nextPeriod, null);
   assert.equal(status.fertile, null);
+});
+
+// checkPastPeriods(): the "add past periods" dialog's rows.
+
+test('past periods: complete rows become periods, empty rows are skipped', () => {
+  const results = checkPastPeriods(
+    [{ start: '2026-09-15', end: '2026-09-19' }, { start: '', end: '' }],
+    periods('2026-10-14'),
+    5,
+    '2026-10-30',
+  );
+  assert.deepEqual(results, [{ period: { start_day: '2026-09-15', end_day: '2026-09-19' } }, null]);
+});
+
+test('past periods: without an end, a period gets the calendar\'s assumed end (usual length, never into the next one)', () => {
+  const logged = periods('2026-10-14');
+  const check = (start, today = '2026-10-30') => checkPastPeriods([{ start, end: '' }], logged, 5, today)[0].period?.end_day;
+  assert.equal(check('2026-09-15'), '2026-09-19');
+  assert.equal(check('2026-10-11'), '2026-10-13'); // the logged period starts Oct 14
+  // Could still be going on: saved as ongoing, like a start logged on the calendar.
+  assert.deepEqual(checkPastPeriods([{ start: '2026-11-03', end: '' }], [], 5, '2026-11-05')[0], {
+    period: { start_day: '2026-11-03', end_day: null },
+  });
+  // Another row counts as the next period too.
+  const rows = [{ start: '2026-09-15', end: '' }, { start: '2026-09-18', end: '2026-09-20' }];
+  assert.equal(checkPastPeriods(rows, [], 5, '2026-10-30')[0].period.end_day, '2026-09-17');
+});
+
+test('past periods: each row says what is wrong with it', () => {
+  const error = (start, end) => checkPastPeriods([{ start, end }], periods('2026-10-14'), 5, '2026-10-30')[0].error;
+  assert.equal(error('', '2026-09-19'), 'missingStart');
+  assert.equal(error('2026-10-31', ''), 'future');
+  assert.equal(error('2026-10-28', '2026-10-31'), 'future');
+  assert.equal(error('2026-09-19', '2026-09-15'), 'endBeforeStart');
+  assert.equal(error('2026-09-01', '2026-09-16'), 'tooLong'); // 16 days
+  assert.equal(error('2026-09-01', '2026-09-15'), undefined); // 15 days is the most
+});
+
+test('past periods: overlaps with logged periods and with rows above are caught', () => {
+  const logged = [period('2026-10-28', null)]; // ongoing: counts until today
+  const rows = [
+    { start: '2026-10-12', end: '2026-10-16' },
+    { start: '2026-10-15', end: '2026-10-18' },
+    { start: '2026-10-29', end: '2026-10-30' },
+  ];
+  const [first, second, third] = checkPastPeriods(rows, logged, 5, '2026-10-30');
+  assert.ok(first.period);
+  assert.deepEqual(second, { error: 'overlap', other: { start_day: '2026-10-12', end_day: '2026-10-16' } });
+  assert.deepEqual(third, { error: 'overlap', other: { start_day: '2026-10-28', end_day: '2026-10-30' } });
 });

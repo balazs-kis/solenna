@@ -35,6 +35,10 @@
   --sidebar: light-dark(rgb(255 255 255 / 0.45), rgb(255 255 255 / 0.08));
   --sidebar-border: light-dark(rgb(255 255 255 / 0.85), rgb(255 255 255 / 0.16));
   --sidebar-shadow: 0 10px 30px light-dark(rgb(90 40 70 / 0.14), rgb(0 0 0 / 0.35));
+  /* Dialogs: glass, but more opaque, over a dimmed page. */
+  --dialog: light-dark(rgb(255 255 255 / 0.86), rgb(36 30 42 / 0.88));
+  --dialog-shadow: 0 24px 70px light-dark(rgb(60 20 45 / 0.25), rgb(0 0 0 / 0.5));
+  --scrim: light-dark(rgb(29 16 26 / 0.34), rgb(0 0 0 / 0.5));
 
   /* Inputs and controls inside the glass */
   --field: light-dark(rgb(255 255 255 / 0.6), rgb(255 255 255 / 0.07));
@@ -147,6 +151,7 @@
     --glass: light-dark(#fdfafc, #1b1820);
     --bar: light-dark(#fdfafc, #1f1c25);
     --sidebar: light-dark(#fdfafc, #1f1c25);
+    --dialog: light-dark(#fdfafc, #1f1c25);
     --glass-blur: none;
     --bar-blur: none;
   }
@@ -259,6 +264,10 @@ a {
 .icon-info { mask-image: url("../icons/info.svg"); }
 .icon-chevron-left { mask-image: url("../icons/chevron-left.svg"); }
 .icon-chevron-right { mask-image: url("../icons/chevron-right.svg"); }
+.icon-history { mask-image: url("../icons/history.svg"); }
+.icon-close { mask-image: url("../icons/close.svg"); }
+.icon-trash { mask-image: url("../icons/trash.svg"); }
+.icon-plus { mask-image: url("../icons/plus.svg"); }
 
 /* Layout: mobile first, a floating tab bar */
 .app {
@@ -775,6 +784,86 @@ h3 {
   & p {
     flex: 1 1 16rem;
     margin: 0;
+  }
+}
+
+/* A dialog (<dialog data-modal>, opened as a modal by app.js): a centred
+   panel; on phones a sheet from the bottom. The page behind is dimmed. */
+.dialog {
+  width: min(600px, calc(100% - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  padding: 1.5rem;
+  color: var(--text);
+  background: var(--dialog);
+  border: 1px solid var(--glass-border);
+  border-radius: 28px;
+  box-shadow: var(--dialog-shadow);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+
+  &::backdrop {
+    background: var(--scrim);
+  }
+
+  @media (max-width: 767px) {
+    width: 100%;
+    max-height: 92dvh;
+    margin: auto 0 0;
+    padding: 1.25rem 1.25rem calc(1.25rem + env(safe-area-inset-bottom));
+    border-bottom: none;
+    border-radius: 28px 28px 0 0;
+  }
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  & h2 {
+    flex: 1;
+    font-size: 1.375rem;
+  }
+
+  /* Pulled into the corner, so its round hover sits in the padding. */
+  & .icon-button {
+    margin: -0.5rem -0.5rem -0.5rem 0;
+  }
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+
+  /* Phones: two equal buttons across the sheet, pinned to its bottom edge
+     while the rows scroll (out to the sheet's edges, over its padding). */
+  @media (max-width: 767px) {
+    position: sticky;
+    /* Sticky stops at the sheet's padding; this takes it down over it. */
+    bottom: calc(-1.25rem - env(safe-area-inset-bottom));
+    margin: 0 -1.25rem calc(-1.25rem - env(safe-area-inset-bottom));
+    padding: 0.75rem 1.25rem calc(1.25rem + env(safe-area-inset-bottom));
+    background: var(--dialog);
+    border-top: 1px solid var(--separator);
+
+    & .button {
+      flex: 1;
+    }
+  }
+}
+
+/* "Add another ...": a dashed outline where the next row would go. */
+.button.add-row {
+  gap: 0.5rem;
+  color: var(--accent-text);
+  background: none;
+  border: 1.5px dashed color-mix(in srgb, var(--accent) 45%, transparent);
+
+  & .icon {
+    width: 18px;
+    height: 18px;
   }
 }
 
@@ -1641,6 +1730,64 @@ h3 {
     height: 18px;
     margin-top: 2px;
   }
+}
+
+/* Add past periods: the card (with fewer than 3 periods logged) and the
+   dialog's rows. The card's icon bubble is the event cards' one. */
+.history-prompt {
+  --kind: var(--accent);
+  --kind-soft: var(--accent-soft);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 1rem;
+
+  & h2 {
+    margin-bottom: 2px;
+  }
+
+  & .button {
+    grid-column: 1 / -1;
+  }
+}
+
+.history-rows {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.history-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 6px;
+  padding: 12px 6px 12px 12px;
+  background: var(--field);
+  border: 1px solid var(--field-border);
+  border-radius: 16px;
+
+  &.has-error {
+    background: color-mix(in srgb, var(--error) 6%, var(--field));
+    border-color: color-mix(in srgb, var(--error) 45%, transparent);
+  }
+
+  /* The hint or error under the dates. */
+  & p {
+    grid-column: 1 / -1;
+    margin: 0;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+  }
+}
+
+/* The two dates side by side where they fit (a date field needs about 9.5rem),
+   else one above the other. */
+.history-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: 10px;
 }
 
 /* Hover, for mice only. A control gets a light tint over its own background,

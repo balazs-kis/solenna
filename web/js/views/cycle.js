@@ -1,9 +1,17 @@
 import { api } from '../api.js';
-import { analyzeCycle, assumedEnd, MAX_PERIOD_DAYS, todayStatus, withoutFertility } from '../cycle-math.js';
+import {
+  analyzeCycle,
+  assumedEnd,
+  checkPastPeriods,
+  loggedEnd,
+  MAX_PERIOD_DAYS,
+  todayStatus,
+  withoutFertility,
+} from '../cycle-math.js';
 import { h } from '../dom.js';
 import { daysBetween, formatDay, formatDayLong, formatDays, formatRelativeDay, todayIso } from '../format.js';
 import { t } from '../i18n.js';
-import { getState, setState, subscribe } from '../store.js';
+import { getState, remember, setState, subscribe } from '../store.js';
 import { fertilityLabels, fertilityMarker, flowLabels, renderCalendar } from './cycle-calendar.js';
 import { hero } from './hero.js';
 
@@ -12,7 +20,8 @@ export const title = 'cycle.title';
 // State: `state.periods` is the user's data (undefined until loaded, sorted by
 // start day). `state.cycleUi` holds this screen's UI state:
 //   month ('YYYY-MM' shown), selected (day), error (i18n key),
-//   confirmDelete (period id), loadFailed. Only `month` and `selected`
+//   confirmDelete (period id), loadFailed, history (the "add past periods"
+//   dialog while it's open, see below). Only `month`, `selected` and `history`
 //   survive leaving the screen. Both are null while they're today's (set
 //   them through followingDay() and followingMonth()), so they move on with
 //   the date.
@@ -105,6 +114,7 @@ export function render(container, state) {
       'div',
       { class: 'columns cycle-columns' },
       renderQuickAction(analysis, status, state.offline),
+      renderHistoryPrompt(analysis),
       h(
         'section',
         { class: 'card stack cycle-main' },
@@ -126,6 +136,7 @@ export function render(container, state) {
         h('span', {}, t('cycle.disclaimer')),
       ),
     ),
+    renderHistoryDialog(view.history, state.periods, analysis, state.offline),
   );
 }
 
@@ -691,11 +702,292 @@ async function save(change, day, focusId) {
   } catch (error) {
     if (error.status === 401 || !getState().user) return;
     failedInBurst = true;
-    let message = 'cycle.saveFailed';
-    if (error.code === 'network') message = 'app.networkError';
-    else if (error.status === 409) message = 'cycle.overlap';
-    else if (error.code === 'stale_ongoing') message = 'cycle.staleOngoing';
-    else if (error.status === 400) message = 'cycle.invalid';
-    setUi({ error: message, confirmDelete: null });
+    setUi({ error: saveError(error), confirmDelete: null });
   }
+}
+
+/** The message (i18n key) for a period change the server didn't accept. */
+function saveError(error) {
+  if (error.code === 'network') return 'app.networkError';
+  if (error.status === 409) return 'cycle.overlap';
+  if (error.code === 'stale_ongoing') return 'cycle.staleOngoing';
+  if (error.status === 400) return 'cycle.invalid';
+  return 'cycle.saveFailed';
+}
+
+// --- Adding past periods -----------------------------------------------------
+// With fewer than 3 periods logged (none included), a card offers to add the
+// ones the user remembers, in a dialog: one row per period, its first and
+// last day only. `cycleUi.history` is the open dialog: rows ({ key, start,
+// end }, as typed), results (checkPastPeriods() of the last save attempt, for
+// the row errors), error (i18n key), saving.
+
+/** The card shows while fewer periods than this are logged. */
+const HISTORY_PROMPT_BELOW = 3;
+
+const pastPeriodErrors = {
+  missingStart: 'cycle.historyMissingStart',
+  future: 'cycle.historyFuture',
+  endBeforeStart: 'cycle.historyEndBeforeStart',
+};
+
+// Keys for the rows: element ids that stay the same across re-renders.
+let nextRowKey = 1;
+
+function emptyRow() {
+  return { key: nextRowKey++, start: '', end: '' };
+}
+
+function renderHistoryPrompt(analysis) {
+  if (analysis.stats.loggedPeriods >= HISTORY_PROMPT_BELOW) return null;
+  return h(
+    'section',
+    { class: 'card history-prompt' },
+    h('span', { class: 'event-icon', 'aria-hidden': 'true' }, h('span', { class: 'icon icon-history' })),
+    h('div', {}, h('h2', {}, t('cycle.historyPromptTitle')), h('p', { class: 'muted' }, t('cycle.historyPromptText'))),
+    h(
+      'button',
+      { type: 'button', id: 'history-open', class: 'button secondary', onclick: openHistory },
+      t('cycle.historyOpen'),
+    ),
+  );
+}
+
+/**
+ * The dialog (app.js opens it as a modal). The rows keep what was picked in
+ * the UI state, so re-renders don't lose it.
+ */
+function renderHistoryDialog(history, periods, analysis, offline) {
+  if (!history) return null;
+  const { today, stats } = analysis;
+  const logged = periods.map((p) =>
+    t('cycle.dateRange', { from: formatDay(p.start_day), to: formatDay(loggedEnd(p, today)) }),
+  );
+  return h(
+    'dialog',
+    {
+      id: 'history-dialog',
+      class: 'dialog',
+      'data-modal': true,
+      'aria-labelledby': 'history-title',
+      // Escape: close through the state, like the close button (not while saving).
+      oncancel: (event) => {
+        event.preventDefault();
+        if (!history.saving) closeHistory();
+      },
+    },
+    h(
+      'form',
+      { class: 'stack', novalidate: true, onsubmit: saveHistory, oninput: keepRows, onfocusin: showRows },
+      h(
+        'div',
+        { class: 'dialog-header' },
+        h('h2', { id: 'history-title' }, t('cycle.historyTitle')),
+        h(
+          'button',
+          {
+            type: 'button',
+            id: 'history-close',
+            class: 'icon-button',
+            'aria-label': t('cycle.historyClose'),
+            disabled: history.saving,
+            onclick: closeHistory,
+          },
+          h('span', { class: 'icon icon-close', 'aria-hidden': 'true' }),
+        ),
+      ),
+      h('p', { class: 'muted' }, t('cycle.historyIntro')),
+      logged.length > 0 && h('p', { class: 'muted' }, t('cycle.historyLogged', { periods: logged.join(', ') })),
+      history.error && h('p', { class: 'error', role: 'alert' }, t(history.error)),
+      h(
+        'ul',
+        { class: 'history-rows' },
+        history.rows.map((row, i) => renderHistoryRow(row, i, history.results?.[i], stats.periodLength)),
+      ),
+      h(
+        'button',
+        { type: 'button', id: 'history-add', class: 'button secondary add-row', onclick: addRow },
+        h('span', { class: 'icon icon-plus', 'aria-hidden': 'true' }),
+        t('cycle.historyAdd'),
+      ),
+      h(
+        'div',
+        { class: 'dialog-actions' },
+        h(
+          'button',
+          {
+            type: 'button',
+            id: 'history-cancel',
+            class: 'button secondary',
+            disabled: history.saving,
+            onclick: closeHistory,
+          },
+          t('cycle.cancel'),
+        ),
+        h(
+          'button',
+          { type: 'submit', id: 'history-save', class: 'button', disabled: offline || history.saving },
+          t('cycle.historySave'),
+        ),
+      ),
+    ),
+  );
+}
+
+/** One period: its first and last day, a remove button, and a hint or what's wrong. */
+function renderHistoryRow(row, index, result, periodLength) {
+  let message = null;
+  if (result?.error === 'overlap') {
+    const range = t('cycle.dateRange', { from: formatDay(result.other.start_day), to: formatDay(result.other.end_day) });
+    message = h('p', { class: 'error' }, t('cycle.historyOverlap', { range }));
+  } else if (result?.error === 'tooLong') {
+    message = h('p', { class: 'error' }, t('cycle.historyTooLong', { days: formatDays(MAX_PERIOD_DAYS) }));
+  } else if (result?.error) {
+    message = h('p', { class: 'error' }, t(pastPeriodErrors[result.error]));
+  } else if (row.start && !row.end) {
+    message = h('p', { class: 'muted' }, t('cycle.historyNoEnd', { days: formatDays(periodLength) }));
+  }
+  const field = (name, label) =>
+    h(
+      'div',
+      { class: 'field' },
+      h('label', { for: `history-${name}-${row.key}` }, label),
+      h('input', {
+        id: `history-${name}-${row.key}`,
+        name: `${name}-${row.key}`,
+        type: 'date',
+        min: '1900-01-01',
+        max: todayIso(),
+        value: row[name],
+      }),
+    );
+  return h(
+    'li',
+    { class: result?.error ? 'history-row has-error' : 'history-row' },
+    h(
+      'div',
+      { class: 'history-fields' },
+      field('start', t('cycle.historyStarted')),
+      field('end', t('cycle.historyEnded')),
+    ),
+    h(
+      'button',
+      {
+        type: 'button',
+        id: `history-remove-${row.key}`,
+        class: 'icon-button',
+        'aria-label': t('cycle.historyRemove', { number: index + 1 }),
+        onclick: () => removeRow(row.key),
+      },
+      h('span', { class: 'icon icon-trash', 'aria-hidden': 'true' }),
+    ),
+    message,
+  );
+}
+
+function setHistory(patch) {
+  setUi({ history: { ...ui().history, ...patch } });
+}
+
+function openHistory() {
+  const row = emptyRow();
+  setUi({ history: { rows: [row], results: null, error: null, saving: false } });
+  document.getElementById(`history-start-${row.key}`)?.focus();
+}
+
+function closeHistory() {
+  setUi({ history: null });
+  // Back to the button, or to the page once enough is logged and the card is
+  // gone; not if a save finished after the user went to another screen.
+  if (getState().path !== '/cycle') return;
+  (document.getElementById('history-open') ?? document.getElementById('page-title'))?.focus();
+}
+
+/**
+ * Keeps the dates as they're typed, without a re-render: the browser takes a
+ * date as complete while its year is still being typed (2 is the year 0002),
+ * and a new input would put the caret back on the first part. Old errors
+ * go: they were about the old dates.
+ */
+function keepRows(event) {
+  const { elements } = event.currentTarget;
+  const rows = ui().history.rows.map((row) => ({
+    ...row,
+    start: elements[`start-${row.key}`].value,
+    end: elements[`end-${row.key}`].value,
+  }));
+  remember({ cycleUi: { ...ui(), history: { ...ui().history, rows, results: null, error: null } } });
+}
+
+/**
+ * Shows the kept dates (the hint for a missing last day, no old errors) once
+ * focus has moved from one date to another (focusin: the new one already has
+ * focus, so the re-render keeps it there). Not when focus goes to a button:
+ * re-rendering between mousedown and mouseup would swallow the click, and
+ * every button renders anyway.
+ */
+function showRows(event) {
+  if (event.target.matches('input') && event.relatedTarget?.matches('#history-dialog input')) setHistory({});
+}
+
+function addRow() {
+  const row = emptyRow();
+  setHistory({ rows: [...ui().history.rows, row] });
+  document.getElementById(`history-start-${row.key}`)?.focus();
+}
+
+function removeRow(key) {
+  const rows = ui().history.rows.filter((row) => row.key !== key);
+  setHistory({ rows: rows.length > 0 ? rows : [emptyRow()], results: null, error: null });
+  document.getElementById('history-add')?.focus();
+}
+
+/**
+ * Checks every row first, and saves only if all are fine: one period after
+ * the other, each leaving the dialog once saved. If the server turns one
+ * down, the ones before it stay saved and the rest stay for another try.
+ */
+function saveHistory(event) {
+  event.preventDefault();
+  const history = ui().history;
+  if (!history || history.saving) return;
+  const periods = getState().periods;
+  const today = todayIso();
+  const { periodLength } = analyzeCycle(periods, today).stats;
+  const results = checkPastPeriods(history.rows, periods, periodLength, today);
+  const firstError = results.findIndex((result) => result?.error);
+  if (firstError >= 0) {
+    setHistory({ results, error: 'cycle.historyFix' });
+    document.getElementById(`history-start-${history.rows[firstError].key}`)?.focus();
+    return;
+  }
+  const toSave = history.rows
+    .map((row, i) => ({ key: row.key, period: results[i]?.period }))
+    .filter((item) => item.period);
+  if (toSave.length === 0) {
+    closeHistory();
+    return;
+  }
+  setHistory({ results: null, error: null, saving: true });
+  queue(async () => {
+    for (const { key, period } of toSave) {
+      try {
+        const created = await api('POST', '/api/periods', { ...period, flow: [] });
+        if (!getState().user) return; // Signed out meanwhile.
+        const periods = [...getState().periods.filter((p) => p.id !== created.id), created].toSorted((a, b) =>
+          a.start_day.localeCompare(b.start_day),
+        );
+        // The dialog can't be closed while saving, but don't count on it.
+        const history = ui().history;
+        const rows = history?.rows.filter((row) => row.key !== key);
+        setState({ periods, cycleUi: { ...ui(), history: history && { ...history, rows } } });
+      } catch (error) {
+        if (error.status === 401 || !getState().user || !ui().history) return;
+        setHistory({ error: saveError(error), saving: false });
+        document.getElementById('history-save')?.focus();
+        return;
+      }
+    }
+    closeHistory();
+  });
 }

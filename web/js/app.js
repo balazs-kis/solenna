@@ -67,6 +67,9 @@ function render(state) {
   if (state.offline) main.prepend(renderOfflineBanner(state));
   announceOffline(state);
   root.replaceChildren(...(signedIn ? [renderNav(state), main] : [main]));
+  // A view can render one modal dialog (`<dialog data-modal>`). It's rebuilt
+  // with the page, so it's opened again each time; focus is restored below.
+  root.querySelector('dialog[data-modal]')?.showModal();
 
   if (state.path !== renderedPath && renderedPath !== null) {
     // A new screen starts at the top, not at the old screen's scroll position.

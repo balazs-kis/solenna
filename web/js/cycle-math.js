@@ -212,6 +212,38 @@ export function assumedEnd(day, periods, periodLength, today) {
   return end;
 }
 
+/**
+ * Past periods entered all at once ("Add past periods"): `rows` are
+ * `{ start, end }` as typed, '' where empty. Each row becomes
+ * `{ period: { start_day, end_day } }`, or `{ error }` with 'missingStart',
+ * 'future', 'endBeforeStart', 'tooLong' or 'overlap' (then also `other`, the
+ * period it runs into: a logged one, or a valid row above it). A row with
+ * neither date is skipped (null). Without an end, a row gets the same end as
+ * a start logged on the calendar (assumedEnd(), with the other rows counting
+ * as periods too): the average length, never into the next period, and
+ * `end_day: null` (ongoing) if it could still be going on.
+ */
+export function checkPastPeriods(rows, periods, periodLength, today) {
+  const logged = periods.map((p) => ({ start_day: p.start_day, end_day: loggedEnd(p, today) }));
+  const starts = [...periods, ...rows.filter((row) => row.start).map((row) => ({ start_day: row.start }))]
+    .toSorted((a, b) => a.start_day.localeCompare(b.start_day));
+  const saved = [];
+  return rows.map((row) => {
+    if (!row.start && !row.end) return null;
+    if (!row.start) return { error: 'missingStart' };
+    const end = row.end || assumedEnd(row.start, starts, periodLength, today);
+    if (row.start > today || (end && end > today)) return { error: 'future' };
+    if (end && end < row.start) return { error: 'endBeforeStart' };
+    if (end && daysBetween(row.start, end) >= MAX_PERIOD_DAYS) return { error: 'tooLong' };
+    // An ongoing one covers the days up to today, for the overlap check.
+    const range = { start_day: row.start, end_day: end ?? today };
+    const other = [...logged, ...saved].find((o) => range.start_day <= o.end_day && o.start_day <= range.end_day);
+    if (other) return { error: 'overlap', other };
+    saved.push(range);
+    return { period: { start_day: row.start, end_day: end } };
+  });
+}
+
 /** `periods` are the ones that start cycles. */
 function averages(periods, today) {
   const starts = periods.map((p) => cycleStart(p, today));
