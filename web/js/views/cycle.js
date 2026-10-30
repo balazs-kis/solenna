@@ -204,7 +204,7 @@ function renderQuickAction(analysis, offline) {
         {
           type: 'button',
           id: 'quick-action',
-          class: 'button',
+          class: 'button large',
           disabled: offline,
           onclick: () => endPeriod(last, today),
         },
@@ -222,7 +222,7 @@ function renderQuickAction(analysis, offline) {
       {
         type: 'button',
         id: 'quick-action',
-        class: 'button',
+        class: 'button large',
         disabled: offline,
         onclick: () => startPeriod(today),
       },

@@ -149,7 +149,7 @@ function renderLoadFailed(state) {
       'div',
       { class: 'card login-card' },
       h('p', { role: 'alert' }, t(state.offline ? 'app.offlineNoData' : 'app.loadFailed')),
-      h('button', { type: 'button', class: 'button', onclick: loadUser }, t('app.retry')),
+      h('button', { type: 'button', class: 'button large', onclick: loadUser }, t('app.retry')),
     ),
   );
 }

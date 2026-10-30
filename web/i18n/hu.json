@@ -112,7 +112,7 @@
   "cycle.phaseUnknownOverdue": "Amíg a menstruáció késik, a fázis nem becsülhető: a peteérés valószínűleg a vártnál később történt.",
   "cycle.phaseUnknownShort": "A menstruáció utáni fázis nem becsülhető: a ciklusok túl rövidek, vagy a menstruáció túl hosszú a naptármódszerhez.",
   "cycle.expectedWas": "A következő menstruáció várható időpontja: {when}",
-  "cycle.normalVariation": "Várható volt: {date}. A ciklusok gyakran néhány nappal eltérnek, ez általában nem ad okot aggodalomra.",
+  "cycle.normalVariation": "{date} volt várható. A ciklusok gyakran néhány nappal eltérnek, ez általában nem ad okot aggodalomra.",
   "cycle.noOvulationEstimate": "Nincs peteérés-becslés",
   "cycle.noOvulationEstimateText": "A ciklusaid 21 napnál rövidebbek, vagy a menstruációd a becsült peteérésig tart, ezért a naptármódszer nem tudja megbecsülni a peteérést és a termékeny időszakot.",
   "cycle.typicalCycleFewPeriods": "Tipikus ciklushossz, amíg nem rögzítesz egy második menstruációt.",

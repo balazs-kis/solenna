@@ -7,6 +7,7 @@ export const title = 'notFound.title';
 export function render(container) {
   container.append(
     h('h1', { tabindex: '-1' }, t('notFound.title')),
-    h('p', {}, h('a', { href: HOME }, t('notFound.back'))),
+    // A button-sized link: a 44px touch target, like every other action.
+    h('a', { class: 'button secondary', href: HOME }, t('notFound.back')),
   );
 }

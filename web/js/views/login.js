@@ -22,7 +22,7 @@ export function render(container, state) {
       state.authError &&
         h('p', { class: 'error', role: 'alert' }, t(errorMessages[state.authError] ?? 'login.failed')),
       // A plain link: the server handles /auth/* (the router leaves it alone).
-      h('a', { class: 'button', href: '/auth/google' }, t('login.google')),
+      h('a', { class: 'button large', href: '/auth/google' }, t('login.google')),
     ),
   );
 }

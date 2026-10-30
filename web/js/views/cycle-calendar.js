@@ -3,6 +3,8 @@ import { formatDay } from '../format.js';
 import { locale, t } from '../i18n.js';
 
 /** Bleeding strength 1..5 as i18n keys (literal, so the translation test sees them). */
+// The flow picker's five-in-a-row width (.flow-options in app.css) is worked
+// out from the longest label; check it when these texts change.
 export const flowLabels = ['cycle.flow1', 'cycle.flow2', 'cycle.flow3', 'cycle.flow4', 'cycle.flow5'];
 
 /** Fertility levels from `dayInfo().fertility`, as i18n keys. */
