@@ -3,7 +3,7 @@ import { analyzeCycle, assumedEnd, cycleStart, MAX_PERIOD_DAYS, withoutFertility
 import { h } from '../dom.js';
 import { daysBetween, formatDay, formatDayLong, formatDays, formatRelativeDay, todayIso } from '../format.js';
 import { t } from '../i18n.js';
-import { getState, setState } from '../store.js';
+import { getState, setState, subscribe } from '../store.js';
 import { fertilityLabels, fertilityMarker, flowLabels, renderCalendar } from './cycle-calendar.js';
 import { hero } from './hero.js';
 
@@ -106,10 +106,29 @@ export function render(container, state) {
   );
 }
 
+// The last analysis and what it was computed from. Every render needs it twice
+// (glow() and render()), and the app re-renders on any state change, while
+// analyzeCycle() walks every logged period and day. Saves always store a new
+// periods array (save() sorts a copy), so comparing the array itself is enough.
+const EMPTY = { periods: null, today: null, showFertility: null, analysis: null };
+let cached = EMPTY;
+
+// Signed out (or not loaded yet): drop the previous user's analysis too, not
+// just their periods in the state.
+subscribe((state) => {
+  if (!state.periods) cached = EMPTY;
+});
+
 /** What the screen shows: the analysis without fertility when the user turned it off. */
 function shownAnalysis(state) {
-  const analysis = analyzeCycle(state.periods, todayIso());
-  return state.user.settings.show_fertility ? analysis : withoutFertility(analysis);
+  const today = todayIso();
+  const showFertility = state.user.settings.show_fertility;
+  if (cached.periods !== state.periods || cached.today !== today || cached.showFertility !== showFertility) {
+    const full = analyzeCycle(state.periods, today);
+    const analysis = showFertility ? full : withoutFertility(full);
+    cached = { periods: state.periods, today, showFertility, analysis };
+  }
+  return cached.analysis;
 }
 
 const phaseGlows = { menstrual: 'rose', follicular: 'amber', ovulation: 'teal', luteal: 'lilac' };
@@ -666,7 +685,8 @@ async function save(change, day, focusId) {
   try {
     const update = await change();
     if (!getState().user) return; // Signed out meanwhile.
-    const periods = update(getState().periods).sort((a, b) => a.start_day.localeCompare(b.start_day));
+    // A sorted copy: the stored list is never changed in place (the analysis cache relies on it).
+    const periods = update(getState().periods).toSorted((a, b) => a.start_day.localeCompare(b.start_day));
     const error = failedInBurst ? ui().error : null;
     setState({ periods, cycleUi: { ...ui(), selected: day, error, confirmDelete: null } });
     document.getElementById(focusId ?? `day-${day}`)?.focus();
