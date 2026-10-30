@@ -21,19 +21,27 @@
   /* Frosted glass: cards, and the navigation bar floating above them. */
   --glass: light-dark(rgb(255 255 255 / 0.55), rgb(255 255 255 / 0.07));
   --glass-border: light-dark(rgb(255 255 255 / 0.8), rgb(255 255 255 / 0.11));
-  --glass-shadow: light-dark(0 6px 24px rgb(90 40 70 / 0.08), 0 8px 32px rgb(0 0 0 / 0.3));
+  /* light-dark() takes colours only: a shadow that differs in size per theme
+     is two shadows, each transparent in the other theme. */
+  --glass-shadow:
+    0 6px 24px light-dark(rgb(90 40 70 / 0.08), transparent),
+    0 8px 32px light-dark(transparent, rgb(0 0 0 / 0.3));
   --glass-blur: blur(24px) saturate(170%);
   --bar: light-dark(rgb(255 255 255 / 0.45), rgb(255 255 255 / 0.09));
   --bar-border: light-dark(rgb(255 255 255 / 0.85), rgb(255 255 255 / 0.18));
-  --bar-shadow: light-dark(0 10px 30px rgb(90 40 70 / 0.18), 0 10px 30px rgb(0 0 0 / 0.45));
+  --bar-shadow: 0 10px 30px light-dark(rgb(90 40 70 / 0.18), rgb(0 0 0 / 0.45));
   --bar-blur: blur(28px) saturate(180%);
+  /* The desktop sidebar is a little lighter than the tab bar in dark mode. */
+  --sidebar: light-dark(rgb(255 255 255 / 0.45), rgb(255 255 255 / 0.08));
+  --sidebar-border: light-dark(rgb(255 255 255 / 0.85), rgb(255 255 255 / 0.16));
+  --sidebar-shadow: 0 10px 30px light-dark(rgb(90 40 70 / 0.14), rgb(0 0 0 / 0.35));
 
   /* Inputs and controls inside the glass */
   --field: light-dark(rgb(255 255 255 / 0.6), rgb(255 255 255 / 0.07));
   --field-border: light-dark(rgb(255 255 255 / 0.9), rgb(255 255 255 / 0.1));
   --segmented: light-dark(rgb(255 255 255 / 0.45), rgb(255 255 255 / 0.08));
   --segmented-active: light-dark(rgb(255 255 255 / 0.95), rgb(255 255 255 / 0.2));
-  --segmented-shadow: light-dark(0 1px 3px rgb(0 0 0 / 0.1), none);
+  --segmented-shadow: 0 1px 3px light-dark(rgb(0 0 0 / 0.1), transparent);
   --chart-dot: light-dark(rgb(184 58 100 / 0.4), rgb(255 143 181 / 0.5));
 
   /* Cycle phases. The soft colours are translucent: they sit on glass. */
@@ -50,7 +58,9 @@
 
   --radius: 24px;
   --control-radius: 12px;
-  --nav-height: 64px;
+  /* The phone tab bar: its height (54px items, 6px padding, 1px border) and gap to the bottom */
+  --nav-height: 68px;
+  --nav-bottom: 26px;
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
 
   /* The glow behind the page: three soft colour spots over a base colour
@@ -116,6 +126,13 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  /* Keyboard focus scrolls into view above the floating tab bar, not under it. */
+  scroll-padding-bottom: calc(var(--nav-height) + var(--nav-bottom) + env(safe-area-inset-bottom));
+
+  /* The sidebar doesn't cover anything. */
+  @media (min-width: 768px) {
+    scroll-padding-bottom: 0;
+  }
 }
 
 /* The body keeps the plain base colour: js/theme.js reads it for the
@@ -191,24 +208,34 @@ a {
 .icon-chevron-left { mask-image: url("../icons/chevron-left.svg"); }
 .icon-chevron-right { mask-image: url("../icons/chevron-right.svg"); }
 
-/* Layout: mobile first, bottom tab bar */
+/* Layout: mobile first, a floating tab bar */
 .app {
   min-height: 100dvh;
 }
 
+/* Room at the bottom so the last card can scroll up above the tab bar. */
 .main {
   max-width: 720px;
   margin: 0 auto;
-  padding: 1.5rem 1rem calc(var(--nav-height) + env(safe-area-inset-bottom) + 1.5rem);
+  padding: 1.5rem 1rem calc(var(--nav-height) + var(--nav-bottom) + env(safe-area-inset-bottom) + 1.5rem);
 }
 
+/* Phone: a frosted pill floating above the content, centred. It just gets
+   narrower when the Cycle tab is turned off. Sized by its own content: a
+   fixed element at `left: 50%` would otherwise only get the other half of
+   the screen, and longer labels would wrap. */
 .nav {
   position: fixed;
-  inset: auto 0 0;
+  bottom: calc(var(--nav-bottom) + env(safe-area-inset-bottom));
+  left: 50%;
   z-index: 10;
-  padding-bottom: env(safe-area-inset-bottom);
+  width: max-content;
+  padding: 6px;
   background: var(--bar);
-  border-top: 1px solid var(--bar-border);
+  border: 1px solid var(--bar-border);
+  border-radius: 999px;
+  box-shadow: var(--bar-shadow);
+  transform: translateX(-50%);
   -webkit-backdrop-filter: var(--bar-blur);
   backdrop-filter: var(--bar-blur);
 }
@@ -219,14 +246,10 @@ a {
 
 .nav-list {
   display: flex;
-  height: var(--nav-height);
+  gap: 2px;
   margin: 0;
   padding: 0;
   list-style: none;
-
-  & li {
-    flex: 1;
-  }
 }
 
 .nav-link {
@@ -235,18 +258,27 @@ a {
   align-items: center;
   justify-content: center;
   gap: 2px;
-  height: 100%;
-  min-height: 44px;
+  min-width: 86px;
+  height: 54px;
+  padding: 0 0.5rem;
   color: var(--text-muted);
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
   text-decoration: none;
+  border-radius: 999px;
 
   &[aria-current="page"] {
     color: var(--accent-text);
+    font-weight: 600;
+    background: var(--accent-soft);
   }
 }
 
 /* The account entry: the user's picture instead of an icon. Name and email only show on desktop. */
+.nav-account .avatar {
+  --size: 24px;
+}
+
 .nav-account[aria-current="page"] .avatar {
   outline: 1.5px solid var(--accent);
   outline-offset: 1.5px;
@@ -256,11 +288,10 @@ a {
   display: none;
 }
 
-/* Desktop: sidebar */
+/* Desktop: a floating frosted sidebar, inset from the window's edges */
 @media (min-width: 768px) {
   .app:has(> .nav) {
-    display: grid;
-    grid-template-columns: 220px 1fr;
+    padding-left: calc(240px + 2 * 16px);
   }
 
   .main {
@@ -269,21 +300,23 @@ a {
   }
 
   .nav {
-    position: sticky;
-    top: 0;
+    inset: 16px auto 16px 16px;
     display: flex;
     flex-direction: column;
-    height: 100dvh;
-    padding: 1.5rem 0.75rem;
-    border-top: none;
-    border-right: 1px solid var(--bar-border);
+    padding: 20px 12px 12px;
+    background: var(--sidebar);
+    border-color: var(--sidebar-border);
+    border-radius: 28px;
+    box-shadow: var(--sidebar-shadow);
+    width: 240px;
+    transform: none;
   }
 
   .nav-brand {
     display: flex;
     align-items: center;
-    gap: 0.625rem;
-    padding: 0 0.75rem 1.5rem;
+    gap: 10px;
+    padding: 0 10px 22px;
     color: var(--accent);
     font-size: 1.25rem;
     font-weight: 700;
@@ -293,11 +326,6 @@ a {
     flex: 1;
     flex-direction: column;
     gap: 4px;
-    height: auto;
-
-    & li {
-      flex: none;
-    }
 
     /* The account entry sits at the bottom of the sidebar. */
     & li:has(.nav-account) {
@@ -305,9 +333,35 @@ a {
     }
   }
 
+  .nav-link {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 12px;
+    height: 44px;
+    padding: 0 12px;
+    font-size: 1rem;
+    border-radius: 14px;
+
+    & .icon {
+      width: 22px;
+      height: 22px;
+    }
+  }
+
+  /* The person block: picture, name and email. */
   .nav-account {
-    min-height: 56px;
-    padding-block: 0.5rem;
+    gap: 10px;
+    height: auto;
+    padding: 10px;
+    border-radius: 16px;
+
+    & .avatar {
+      --size: 36px;
+    }
+
+    &[aria-current="page"] {
+      color: var(--text);
+    }
   }
 
   /* Hidden visually, still part of the link's accessible name. */
@@ -334,25 +388,13 @@ a {
 
   .nav-person-name {
     color: var(--text);
+    font-size: 0.9375rem;
     font-weight: 600;
   }
 
   .nav-person-email {
     color: var(--text-muted);
     font-size: 0.8125rem;
-  }
-
-  .nav-link {
-    flex-direction: row;
-    justify-content: flex-start;
-    gap: 0.75rem;
-    padding: 0 0.75rem;
-    border-radius: var(--radius);
-    font-size: 1rem;
-
-    &[aria-current="page"] {
-      background: var(--accent-soft);
-    }
   }
 }
 
