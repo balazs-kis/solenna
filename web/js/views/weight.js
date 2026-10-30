@@ -20,14 +20,21 @@ const ranges = [
   { id: 'all', days: null, label: 'weight.rangeAll' },
 ];
 const DEFAULT_RANGE = '90d';
+// The history shows this many entries at first, and this many more per "Show
+// more": every change rebuilds the screen, and hundreds of rows make each tap
+// slow on a phone.
+const HISTORY_PAGE = 50;
 
 // State: `state.weights` is the user's data (undefined until loaded, sorted by
 // day). `state.weightUi` holds this screen's UI state:
 //   range, edit ({ day, weight_g } being edited), draft ({ day, kg } as typed,
 //   kept with remember() so re-renders don't reset the form; `day` is null
 //   unless the user picked one, so the form keeps following today), error (i18n key
-//   of the save error), confirmDelete (day), deleteError, loadFailed. `range`,
-//   `edit` and `draft` survive leaving the screen.
+//   of the save error), confirmDelete (day), deleteError, loadFailed,
+//   historyLimit (entries shown in the history). `range`, `edit` and `draft`
+//   survive leaving the screen. `historyLimit` goes back to one page whenever
+//   the screen opens or the range changes: it's there to keep re-renders
+//   fast, so a long list shouldn't stick around.
 
 function ui() {
   return getState().weightUi ?? {};
@@ -42,7 +49,7 @@ function setUi(patch) {
  * reconnecting). A half-typed entry stays.
  */
 export async function load() {
-  setUi({ loadFailed: false, error: null, confirmDelete: null, deleteError: false });
+  setUi({ loadFailed: false, error: null, confirmDelete: null, deleteError: false, historyLimit: null });
   const before = getState().weights;
   try {
     const weights = await api('GET', '/api/weights');
@@ -193,7 +200,7 @@ function renderChartCard(range, inRange, trend, from, today) {
             type: 'button',
             id: `range-${r.id}`,
             'aria-pressed': String(r.id === range.id),
-            onclick: () => setUi({ range: r.id }),
+            onclick: () => setUi({ range: r.id, historyLimit: null }),
           },
           t(r.label),
         ),
@@ -207,6 +214,8 @@ function renderChartCard(range, inRange, trend, from, today) {
 
 function renderHistory(inRange, view, offline) {
   if (inRange.length === 0) return null;
+  const newestFirst = [...inRange].reverse();
+  const limit = view.historyLimit ?? HISTORY_PAGE;
   return h(
     'section',
     { class: 'card stack weight-history' },
@@ -216,8 +225,14 @@ function renderHistory(inRange, view, offline) {
       'ul',
       // The id keeps its scroll position across re-renders (see app.js).
       { id: 'weight-entries', class: 'entry-list' },
-      [...inRange].reverse().map((entry) => renderEntry(entry, view, offline)),
+      newestFirst.slice(0, limit).map((entry) => renderEntry(entry, view, offline)),
     ),
+    newestFirst.length > limit &&
+      h(
+        'button',
+        { type: 'button', class: 'button secondary', onclick: () => showMore(newestFirst[limit].day, limit) },
+        t('weight.showMore'),
+      ),
   );
 }
 
@@ -251,6 +266,7 @@ function renderEntry(entry, view, offline) {
             'button',
             {
               type: 'button',
+              id: `edit-${entry.day}`,
               class: 'link-button',
               'aria-label': t('weight.editLabel', { date }),
               onclick: () => startEdit(entry),
@@ -321,6 +337,16 @@ async function save(event) {
     else if (error.status === 400) message = 'weight.invalid';
     setUi({ draft: draftOf(form), error: message });
   }
+}
+
+/**
+ * Shows the next page of the history. Focus goes to the first newly shown
+ * entry (its Edit button, which stays enabled offline), so keyboard and screen
+ * reader users carry on where the list grew; the button itself moved down.
+ */
+function showMore(firstNewDay, limit) {
+  setUi({ historyLimit: limit + HISTORY_PAGE });
+  document.getElementById(`edit-${firstNewDay}`)?.focus();
 }
 
 function startEdit(entry) {

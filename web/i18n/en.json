@@ -44,6 +44,7 @@
   "weight.legendTrend": "Trend",
   "weight.legendWeighIn": "Weigh-in",
   "weight.history": "History",
+  "weight.showMore": "Show more",
   "weight.edit": "Edit",
   "weight.editLabel": "Edit weigh-in of {date}",
   "weight.delete": "Delete",
