@@ -146,6 +146,8 @@ This app stores health data. Treat it accordingly.
   - **Background colour = phase**, one per day: logged bleeding (shaded by flow strength), predicted bleeding (dashed), follicular, ovulation, luteal.
   - **Fertility = a small marker on top:** one sprout (fertile), two sprouts (high), on any background, bleeding days included.
   - The legend has one group per layer. Don't add fertility as a background colour.
+- **The screen's glow follows today's phase** (`glow()` in `cycle.js`): bleeding rose, follicular amber, ovulation teal, luteal lilac, and neutral when there's no estimate (overdue, short cycles, nothing logged). It takes the phase from the same analysis the screen shows, so with `show_fertility` off the ovulation day glows amber, never teal: the glow must not give away the estimate the setting hides.
+- **The header** says the day ("Period day N", "Spotting, day N" or "Cycle day N"), then the phase (or, when overdue, that the period is late or was expected), then what comes next: the end of an ongoing period, the overdue context, this cycle's fertile window (only with fertility info on), or the next period.
 - **Never invent an estimate where the method has nothing to say:**
   - **Short cycles:** a cycle under 21 days, or one where ovulation would fall on or before the period's end, gets no ovulation or fertile window. The screen explains why.
   - **Overdue period:** the current cycle's phase, ovulation and fertility become unknown, and nothing further is predicted. The estimate has just been shown wrong; ovulation most likely came later.

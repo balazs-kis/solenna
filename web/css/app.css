@@ -735,6 +735,21 @@ h2 {
   }
 }
 
+/* A value in words ("Cycle day 28") is longer than a number: smaller on
+   phones, and when it wraps (Hungarian), into two even lines. */
+.hero-value-words {
+  font-size: 2.75rem;
+  line-height: 1.14;
+  letter-spacing: -0.5px;
+  text-wrap: balance;
+
+  @media (min-width: 768px) {
+    font-size: 4rem;
+    line-height: 1.0625;
+    letter-spacing: -1.5px;
+  }
+}
+
 .hero-unit {
   color: var(--text-muted);
   font-size: 1.5rem;
@@ -781,6 +796,71 @@ h2 {
   @media (min-width: 1280px) {
     grid-template-columns: minmax(0, 1fr) 360px;
     align-items: start;
+  }
+}
+
+/* Cycle: the calendar on the left; the quick action, the events and the
+   disclaimer on the right at their natural height. The last row takes the
+   calendar's extra height, so it doesn't spread gaps between the side cards.
+   Without a quick action the side cards just move up a row. */
+@media (min-width: 1280px) {
+  .cycle-columns {
+    grid-template-rows: auto auto auto 1fr;
+  }
+
+  .cycle-main {
+    grid-column: 1;
+    grid-row: 1 / -1;
+  }
+
+  .cycle-columns > :not(.cycle-main) {
+    grid-column: 2;
+  }
+
+  /* One event per row in the narrow column. */
+  .cycle-columns .events {
+    grid-template-columns: none;
+  }
+
+  /* Bigger day cells; the markers scale with the grid (see .calendar-day). */
+  .cycle-main {
+    & .calendar-weekdays,
+    & .calendar-grid {
+      gap: 6px;
+    }
+
+    & .calendar-day {
+      aspect-ratio: auto;
+      height: 64px;
+      border-radius: 16px;
+    }
+  }
+
+  /* The selected day in one row: its text left, the actions right. When the
+     actions don't fit next to at least 12rem of text (e.g. the delete
+     confirmation), they wrap under it. The flow picker and errors follow. */
+  .day-panel {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem 16px;
+
+    & > * {
+      flex: 1 1 100%;
+      order: 2;
+    }
+
+    & > .day-panel-text {
+      flex: 1 1 12rem;
+      order: 0;
+    }
+
+    & > .actions {
+      flex: 0 1 auto;
+      order: 1;
+      margin-left: auto;
+      justify-content: flex-end;
+    }
   }
 }
 
@@ -1010,7 +1090,15 @@ h3 {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  gap: 12px;
+  padding: 12px;
+
+  & .button {
+    flex: 1 1 auto;
+    min-height: 50px;
+    font-size: 1.0625rem;
+    border-radius: 14px;
+  }
 
   & .icon {
     width: 20px;
@@ -1020,7 +1108,9 @@ h3 {
 }
 
 .quick-action-label {
-  font-size: 1.125rem;
+  flex: 1 1 auto;
+  padding-left: 6px;
+  font-size: 1.0625rem;
   font-weight: 600;
 }
 
@@ -1242,6 +1332,11 @@ h3 {
 .day-panel {
   padding-top: 1rem;
   border-top: 1px solid var(--separator);
+}
+
+.day-panel-text {
+  display: grid;
+  gap: 2px;
 }
 
 .day-panel-title::first-letter {

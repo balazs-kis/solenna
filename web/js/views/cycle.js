@@ -1,10 +1,11 @@
 import { api } from '../api.js';
-import { analyzeCycle, assumedEnd, MAX_PERIOD_DAYS, withoutFertility } from '../cycle-math.js';
+import { analyzeCycle, assumedEnd, cycleStart, MAX_PERIOD_DAYS, withoutFertility } from '../cycle-math.js';
 import { h } from '../dom.js';
 import { daysBetween, formatDay, formatDayLong, formatDays, formatRelativeDay, todayIso } from '../format.js';
 import { t } from '../i18n.js';
 import { getState, setState } from '../store.js';
 import { fertilityLabels, fertilityMarker, flowLabels, renderCalendar } from './cycle-calendar.js';
+import { hero } from './hero.js';
 
 export const title = 'cycle.title';
 
@@ -69,19 +70,21 @@ export function render(container, state) {
 
   const today = todayIso();
   const showFertility = state.user.settings.show_fertility;
-  const fullAnalysis = analyzeCycle(state.periods, today);
-  const analysis = showFertility ? fullAnalysis : withoutFertility(fullAnalysis);
+  const analysis = shownAnalysis(state);
   const selected = view.selected ?? today;
   const month = view.month ?? today.slice(0, 7);
 
+  // Phone order: quick action, calendar, events, disclaimer. On wide screens
+  // the calendar moves to the left column (see app.css).
   container.append(
+    renderHero(analysis, showFertility),
     h(
       'div',
-      { class: 'stack' },
+      { class: 'columns cycle-columns' },
       renderQuickAction(analysis, state.offline),
       h(
         'section',
-        { class: 'card stack' },
+        { class: 'card stack cycle-main' },
         renderCalendar({
           month,
           selected,
@@ -103,21 +106,99 @@ export function render(container, state) {
   );
 }
 
+/** What the screen shows: the analysis without fertility when the user turned it off. */
+function shownAnalysis(state) {
+  const analysis = analyzeCycle(state.periods, todayIso());
+  return state.user.settings.show_fertility ? analysis : withoutFertility(analysis);
+}
+
+const phaseGlows = { menstrual: 'rose', follicular: 'amber', ovulation: 'teal', luteal: 'lilac' };
+
+/**
+ * The glow follows today's phase. It comes from the same analysis the screen
+ * shows, so with fertility info off the ovulation day glows amber (it reads as
+ * follicular), never teal: that would give away the hidden estimate. No
+ * estimate (overdue, short cycles, nothing logged): neutral.
+ */
+export function glow(state) {
+  if (!state.periods || state.cycleUi?.loadFailed) return 'neutral';
+  return phaseGlows[shownAnalysis(state).dayInfo(todayIso()).phase] ?? 'neutral';
+}
+
+/**
+ * Today at a glance: the day of the period (or spotting, or cycle), the phase,
+ * and what comes next. Nothing before the first period is logged.
+ */
+function renderHero(analysis, showFertility) {
+  const { last, today, cycles } = analysis;
+  if (!last) return null;
+  const info = analysis.dayInfo(today);
+  // A logged period covering today. Its days only count as the menstrual phase
+  // once there's real flow; before that it's spotting (see cycle-math.js).
+  const bleeding = analysis.periodOn(today);
+  const menstrual = info.phase === 'menstrual';
+
+  let value;
+  if (bleeding && menstrual) value = t('cycle.periodDay', { day: periodDay(bleeding, today) });
+  else if (bleeding) value = t('cycle.spottingDay', { day: daysBetween(bleeding.start_day, today) + 1 });
+  else if (info.cycleDay) value = t('cycle.cycleDay', { day: info.cycleDay });
+  else return null;
+
+  // Overdue: the phase is unknown, and the lines say what the cards say.
+  const overdue = analysis.overdueBy > 0;
+  const when = overdue && formatRelativeDay(analysis.expectedStart, today);
+  let line1 = null;
+  if (info.phase === 'ovulation') line1 = t('cycle.heroOvulation');
+  else if (info.phase) line1 = t(phases[info.phase].name);
+  else if (overdue) line1 = analysis.late ? t('cycle.late') : t('cycle.expectedWas', { when });
+
+  // What comes next: the end of this period, the fertile window of this cycle
+  // (only with fertility info on), or the next period.
+  const current = cycles[0];
+  let line2 = null;
+  if (bleeding && menstrual && bleeding.end_day === null) {
+    line2 = t('cycle.expectedEnd', { date: formatDay(current.periodEnd > today ? current.periodEnd : today) });
+  } else if (overdue) {
+    const date = formatDay(analysis.expectedStart);
+    line2 = analysis.late ? t('cycle.wasExpected', { when, date }) : t('cycle.normalVariation', { date });
+  } else if (showFertility && current?.fertileEnd != null && current.fertileEnd >= today) {
+    if (info.fertility === 'high') line2 = t('cycle.highFertilityToday');
+    else if (current.fertileStart <= today) line2 = t('cycle.fertileNow');
+    else line2 = t('cycle.fertileFrom', { when: formatRelativeDay(current.fertileStart, today) });
+  } else if (cycles[1]) {
+    line2 = t('cycle.nextPeriod', { when: formatRelativeDay(cycles[1].start, today) });
+  }
+
+  return hero({ value, words: true, line1, line2 });
+}
+
+/**
+ * Day N of a period: counted from its first day of real flow (cycle day 1),
+ * like the cycles and the period lengths. Leading spotting days don't count.
+ */
+function periodDay(period, today) {
+  return daysBetween(cycleStart(period, today), today) + 1;
+}
+
 /** One big button for the most common action today. */
 function renderQuickAction(analysis, offline) {
   const { last, today } = analysis;
   const ongoing = last && last.end_day === null;
 
   if (ongoing) {
-    const periodDay = daysBetween(last.start_day, today) + 1;
+    // The length limit counts from the logged start, like the server's.
+    const loggedDays = daysBetween(last.start_day, today) + 1;
     const spotting = last !== analysis.cycleLast;
-    if (periodDay > MAX_PERIOD_DAYS) {
-      return h('p', { class: 'card error' }, t('cycle.ongoingTooLong', { days: formatDays(periodDay) }));
+    if (loggedDays > MAX_PERIOD_DAYS) {
+      return h('p', { class: 'card error' }, t('cycle.ongoingTooLong', { days: formatDays(loggedDays) }));
     }
+    const label = spotting
+      ? t('cycle.spottingDay', { day: loggedDays })
+      : t('cycle.periodDay', { day: periodDay(last, today) });
     return h(
       'div',
       { class: 'card quick-action' },
-      h('span', { class: 'quick-action-label' }, t(spotting ? 'cycle.spottingDay' : 'cycle.periodDay', { day: periodDay })),
+      h('span', { class: 'quick-action-label' }, label),
       h(
         'button',
         {
@@ -197,14 +278,17 @@ function renderDayPanel(day, analysis, view, state) {
   if (info.phase) status.push(t('cycle.cycleDayPhase', { day: info.cycleDay, phase: t(phases[info.phase].name) }));
   else if (info.cycleDay) status.push(t('cycle.cycleDay', { day: info.cycleDay }));
 
-  const content = [
+  // The text block; on wide screens the actions sit next to it in one row.
+  const text = h(
+    'div',
+    { class: 'day-panel-text' },
     h('h3', { class: 'day-panel-title' }, formatDayLong(day)),
     status.length > 0 && h('p', { class: 'muted' }, status.join(' · ')),
-  ];
+    info.isFuture && h('p', { class: 'muted' }, t('cycle.futureDay')),
+  );
+  const content = [text];
 
-  if (info.isFuture) {
-    content.push(h('p', { class: 'muted' }, t('cycle.futureDay')));
-  } else {
+  if (!info.isFuture) {
     if (period) content.push(renderFlowPicker(period, day, info.flow, state.offline));
     content.push(renderDayActions(day, period, analysis, view, state));
   }
@@ -253,7 +337,7 @@ function renderDayActions(day, period, analysis, view, state) {
         {
           type: 'button',
           id: 'day-start',
-          class: 'button',
+          class: 'button secondary',
           disabled: offline,
           onclick: () => startPeriod(day),
         },
@@ -362,7 +446,7 @@ function renderEvents(analysis, showFertility) {
       eventCard(
         'period',
         'drop',
-        t('cycle.periodDay', { day: daysBetween(last.start_day, today) + 1 }),
+        t('cycle.periodDay', { day: periodDay(last, today) }),
         t('cycle.expectedEnd', { date: formatDay(expectedEnd > today ? expectedEnd : today) }),
       ),
     );

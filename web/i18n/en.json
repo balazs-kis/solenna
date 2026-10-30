@@ -101,6 +101,8 @@
   "cycle.wasExpected": "It was expected {when} ({date}).",
   "cycle.nextPeriod": "Next period {when}",
   "cycle.fertileNow": "Fertile window now",
+  "cycle.heroOvulation": "Ovulation (estimate)",
+  "cycle.highFertilityToday": "High fertility today",
   "cycle.fertileFrom": "Fertile window {when}",
   "cycle.dateRange": "{from} – {to}",
   "cycle.ovulationOn": "Estimated ovulation {when}",

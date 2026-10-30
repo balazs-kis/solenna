@@ -101,6 +101,8 @@
   "cycle.wasExpected": "Várható időpont: {when} ({date}).",
   "cycle.nextPeriod": "Következő menstruáció: {when}",
   "cycle.fertileNow": "Most termékeny időszak van",
+  "cycle.heroOvulation": "Peteérés (becslés)",
+  "cycle.highFertilityToday": "Ma magas a termékenység",
   "cycle.fertileFrom": "Termékeny időszak: {when}",
   "cycle.dateRange": "{from} – {to}",
   "cycle.ovulationOn": "Becsült peteérés: {when}",
