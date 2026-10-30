@@ -64,37 +64,80 @@
   --nav-bottom: 26px;
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
 
-  /* The glow behind the page: three soft colour spots over a base colour
-     (--bg). The neutral one; screens pick another with `data-glow` on <html>. */
+  /* The base colour behind the page (the glow's spots sit on it, see
+     body::before). The neutral one; screens pick another with `data-glow`. */
   --bg: light-dark(#f7f2f6, #0c0a12);
-  --glow-1: light-dark(rgb(240 130 170 / 0.45), rgb(214 70 128 / 0.42));
-  --glow-2: light-dark(rgb(165 145 235 / 0.42), rgb(98 76 210 / 0.4));
-  --glow-3: light-dark(rgb(255 186 140 / 0.38), rgb(30 150 160 / 0.28));
 }
 
 :root[data-glow="rose"] {
   --bg: light-dark(#f8f1f4, #100a10);
+}
+
+:root[data-glow="amber"] {
+  --bg: light-dark(#faf5ee, #110d09);
+}
+
+:root[data-glow="teal"] {
+  --bg: light-dark(#f0f7f6, #08100f);
+}
+
+:root[data-glow="lilac"] {
+  --bg: light-dark(#f4f1f9, #0b0a14);
+}
+
+/* The glow's three colour spots. They live on the glow layer only and are
+   registered as colours so they can animate: switching screens cross-fades
+   them, and each frame restyles just that layer, not the page. --bg switches
+   at once (js/theme.js reads it for the status bar right away; the base
+   colours barely differ anyway). */
+@property --glow-1 {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: transparent;
+}
+
+@property --glow-2 {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: transparent;
+}
+
+@property --glow-3 {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: transparent;
+}
+
+body::before {
+  --glow-1: light-dark(rgb(240 130 170 / 0.45), rgb(214 70 128 / 0.42));
+  --glow-2: light-dark(rgb(165 145 235 / 0.42), rgb(98 76 210 / 0.4));
+  --glow-3: light-dark(rgb(255 186 140 / 0.38), rgb(30 150 160 / 0.28));
+  transition: --glow-1 0.6s, --glow-2 0.6s, --glow-3 0.6s;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+:root[data-glow="rose"] body::before {
   --glow-1: light-dark(rgb(240 120 165 / 0.5), rgb(220 70 130 / 0.45));
   --glow-2: light-dark(rgb(255 160 190 / 0.4), rgb(170 50 110 / 0.35));
   --glow-3: light-dark(rgb(255 180 150 / 0.35), rgb(200 90 90 / 0.22));
 }
 
-:root[data-glow="amber"] {
-  --bg: light-dark(#faf5ee, #110d09);
+:root[data-glow="amber"] body::before {
   --glow-1: light-dark(rgb(245 180 90 / 0.5), rgb(210 140 40 / 0.42));
   --glow-2: light-dark(rgb(255 205 140 / 0.42), rgb(190 110 50 / 0.32));
   --glow-3: light-dark(rgb(240 150 170 / 0.25), rgb(200 80 120 / 0.18));
 }
 
-:root[data-glow="teal"] {
-  --bg: light-dark(#f0f7f6, #08100f);
+:root[data-glow="teal"] body::before {
   --glow-1: light-dark(rgb(80 200 185 / 0.45), rgb(30 170 155 / 0.42));
   --glow-2: light-dark(rgb(130 215 205 / 0.4), rgb(40 130 160 / 0.32));
   --glow-3: light-dark(rgb(165 145 235 / 0.25), rgb(110 85 220 / 0.18));
 }
 
-:root[data-glow="lilac"] {
-  --bg: light-dark(#f4f1f9, #0b0a14);
+:root[data-glow="lilac"] body::before {
   --glow-1: light-dark(rgb(165 140 235 / 0.5), rgb(110 85 220 / 0.48));
   --glow-2: light-dark(rgb(200 170 245 / 0.42), rgb(150 100 230 / 0.35));
   --glow-3: light-dark(rgb(240 150 190 / 0.28), rgb(200 80 150 / 0.2));
@@ -418,6 +461,8 @@ a {
   position: absolute;
   width: 1px;
   height: 1px;
+  /* Takes no room: below a full-height app it would add a scrollbar. */
+  margin: -1px;
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
@@ -756,11 +801,18 @@ h2 {
   gap: 1rem;
   width: 100%;
   max-width: 360px;
+  padding: 1.5rem 1.25rem 1.25rem;
   text-align: center;
 
   & h1 {
     margin: 0;
     color: var(--accent);
+  }
+
+  & .button {
+    min-height: 50px;
+    font-size: 1.0625rem;
+    border-radius: 14px;
   }
 }
 
