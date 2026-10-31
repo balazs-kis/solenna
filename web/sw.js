@@ -4,12 +4,13 @@
 // Installed apps keep serving the cached files until this file changes, so
 // VERSION is a hash of everything in web/. When any file changes, cargo test
 // fails and prints the new value to put here.
-const VERSION = '5b31e9d40f6a';
+const VERSION = '52af6dcb3dae';
 const CACHE = `solenna-shell-${VERSION}`;
 
 // Every file of the shell. A cargo test checks that this lists every file in web/.
 const SHELL = [
   '/index.html',
+  '/legal.html',
   '/manifest.webmanifest',
   '/favicon.ico',
   '/css/app.css',
@@ -21,6 +22,7 @@ const SHELL = [
   '/js/dom.js',
   '/js/format.js',
   '/js/i18n.js',
+  '/js/legal-page.js',
   '/js/router.js',
   '/js/snapshot.js',
   '/js/store.js',
@@ -33,9 +35,9 @@ const SHELL = [
   '/js/views/cycle-calendar.js',
   '/js/views/cycle.js',
   '/js/views/hero.js',
+  '/js/views/legal.js',
   '/js/views/login.js',
   '/js/views/not-found.js',
-  '/js/views/privacy.js',
   '/js/views/weight-chart.js',
   '/js/views/weight.js',
   '/icons/apple-touch-icon.png',
@@ -57,6 +59,12 @@ const SHELL = [
   '/icons/trash.svg',
   '/icons/weight.svg',
 ];
+
+// Paths that aren't the app, and the file the server serves for them.
+const PAGES = {
+  '/privacy': '/legal.html',
+  '/terms': '/legal.html',
+};
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -88,7 +96,9 @@ self.addEventListener('fetch', (event) => {
   ) {
     return; // Not ours: the browser handles it as usual.
   }
-  // App routes (/weight, /cycle, ...) are all the same page.
-  const key = event.request.mode === 'navigate' ? '/index.html' : url.pathname;
+  // App routes (/weight, /cycle, ...) are all the same page; the privacy
+  // notice and the terms have their own (as the server serves them).
+  const page = PAGES[url.pathname] ?? '/index.html';
+  const key = event.request.mode === 'navigate' ? page : url.pathname;
   event.respondWith(caches.match(key).then((cached) => cached ?? fetch(event.request)));
 });

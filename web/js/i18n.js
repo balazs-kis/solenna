@@ -3,6 +3,14 @@ import hu from '../i18n/hu.json' with { type: 'json' };
 
 const dictionaries = { en, hu };
 
+export const languages = Object.keys(dictionaries);
+
+/** Each language's name, in that language (so the same in every dictionary). */
+export const languageNames = {
+  en: 'language.en',
+  hu: 'language.hu',
+};
+
 const STORAGE_KEY = 'solenna-lang';
 let active = 'en';
 

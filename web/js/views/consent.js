@@ -2,14 +2,17 @@ import { api } from '../api.js';
 import { append, h } from '../dom.js';
 import { t } from '../i18n.js';
 import { getState, SIGNED_OUT, setState } from '../store.js';
-import { privacyButton, privacyDialog } from './privacy.js';
+import { legalDialog, legalLinks } from './legal.js';
 
 export const title = 'consent.title';
 
-// Shown after signing in, until the user agrees to the privacy notice
-// (`state.user.consentedAt` is null): health data needs explicit consent, so
-// the server refuses every data route until then. Not agreeing deletes the
-// sign-in. `state.consentUi`: agreed (the checkbox), error (i18n key).
+// Shown after signing in, until the user has agreed (`state.user.consentedAt`
+// is null): the server refuses every data route until then. Two checkboxes,
+// both needed: accepting the terms (and being 16 or older), and explicit
+// consent to storing health data, which the GDPR wants kept apart from
+// anything else agreed to (Art. 7(2), 9(2)(a)). One request records both.
+// Not agreeing deletes the sign-in. `state.consentUi`: terms, agreed (the
+// checkboxes), error (i18n key).
 
 const points = ['consent.pointPrivate', 'consent.pointIdentity', 'consent.pointControl', 'consent.pointAsIs'];
 
@@ -30,18 +33,9 @@ export function render(container, state) {
       h('h1', { id: 'page-title', tabindex: '-1' }, t('consent.title')),
       h('p', {}, t('consent.intro')),
       h('ul', { class: 'consent-points' }, points.map((key) => h('li', {}, t(key)))),
-      h('p', {}, privacyButton('consent.readNotice')),
-      h(
-        'label',
-        { class: 'consent-check' },
-        h('input', {
-          type: 'checkbox',
-          id: 'consent-agree',
-          checked: Boolean(view.agreed),
-          onchange: (event) => setUi({ agreed: event.target.checked, error: null }),
-        }),
-        h('span', {}, t('consent.agree')),
-      ),
+      legalLinks(),
+      checkbox('consent-terms', 'consent.acceptTerms', 'terms', view),
+      checkbox('consent-agree', 'consent.agree', 'agreed', view),
       view.error && h('p', { class: 'error', role: 'alert' }, t(view.error)),
       h(
         'div',
@@ -61,14 +55,30 @@ export function render(container, state) {
       ),
       h('p', { class: 'muted' }, t('consent.declineHint')),
     ),
-    privacyDialog(state),
+    legalDialog(state),
+  );
+}
+
+/** The whole box is the label, so it's one big touch target. `field` is its key in consentUi. */
+function checkbox(id, label, field, view) {
+  return h(
+    'label',
+    { class: 'consent-check' },
+    h('input', {
+      type: 'checkbox',
+      id,
+      checked: Boolean(view[field]),
+      onchange: (event) => setUi({ [field]: event.target.checked, error: null }),
+    }),
+    h('span', {}, t(label)),
   );
 }
 
 async function agree() {
-  if (!ui().agreed) {
+  const { terms, agreed } = ui();
+  if (!terms || !agreed) {
     setUi({ error: 'consent.mustAgree' });
-    document.getElementById('consent-agree')?.focus();
+    document.getElementById(terms ? 'consent-agree' : 'consent-terms')?.focus();
     return;
   }
   try {

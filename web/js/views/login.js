@@ -1,6 +1,6 @@
 import { append, h } from '../dom.js';
 import { t } from '../i18n.js';
-import { privacyButton, privacyDialog } from './privacy.js';
+import { legalDialog, legalLinks } from './legal.js';
 
 export const title = 'login.title';
 
@@ -26,14 +26,9 @@ export function render(container, state) {
       // A plain link: the server handles /auth/* (the router leaves it alone).
       h('a', { class: 'button large', href: '/auth/google' }, t('login.google')),
       // Seen before signing up. Consent itself is asked for after signing in.
-      h(
-        'p',
-        { class: 'muted login-terms' },
-        t('login.terms'),
-        ' ',
-        privacyButton('login.privacy'),
-      ),
+      h('p', { class: 'muted login-terms' }, t('login.terms')),
+      legalLinks(),
     ),
-    privacyDialog(state),
+    legalDialog(state),
   );
 }

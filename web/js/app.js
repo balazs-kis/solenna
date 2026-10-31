@@ -50,7 +50,8 @@ function render(state) {
 
   const signedIn = state.user !== null;
   // The app proper (navigation, the screens' data) only once the user has
-  // agreed to the privacy notice; until then the consent screen asks for it.
+  // accepted the terms and consented to storing their health data; until then
+  // the consent screen asks for both.
   const consented = signedIn && Boolean(state.user.consentedAt);
   if (!signedIn) loadedView = null;
   const view = pickView(state);
@@ -214,8 +215,8 @@ function checkDate() {
 
 /**
  * Public facts about the server, the same for everyone: the release and who
- * runs it (`state.about`: { version, contact }), for Account and the privacy
- * notice. Without them, those just leave them out.
+ * runs it (`state.about`: { version, contact }), for Account, the privacy
+ * notice and the terms. Without them, those just leave them out.
  */
 async function loadAbout() {
   try {

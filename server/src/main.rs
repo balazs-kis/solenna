@@ -324,6 +324,20 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn privacy_notice_and_terms_have_their_own_page() {
+        for uri in ["/privacy", "/terms"] {
+            let response = router(test_state())
+                .oneshot(Request::get(uri).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK, "{uri}");
+            let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+            let html = String::from_utf8(bytes.to_vec()).unwrap();
+            assert!(html.contains("/js/legal-page.js"), "{uri}");
+        }
+    }
+
+    #[tokio::test]
     async fn security_headers_are_on_every_response() {
         for uri in ["/", "/api/health", "/api/nope", "/missing.css"] {
             let (_, headers, _) = send("GET", uri).await;

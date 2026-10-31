@@ -1,12 +1,12 @@
 import { api } from '../api.js';
 import { append, h } from '../dom.js';
 import { todayIso } from '../format.js';
-import { browserLanguage, saveLanguage, t } from '../i18n.js';
+import { browserLanguage, languageNames, languages, saveLanguage, t } from '../i18n.js';
 import { getState, SIGNED_OUT, setState } from '../store.js';
 import { saveTheme } from '../theme.js';
 import { avatar, displayName } from './avatar.js';
 import { hero } from './hero.js';
-import { privacyButton, privacyDialog } from './privacy.js';
+import { legalDialog, legalLinks } from './legal.js';
 
 export const title = 'account.title';
 
@@ -15,12 +15,10 @@ export const title = 'account.title';
 // state: saveFailed, logoutFailed, exportFailed, deleteFailed (each the i18n
 // key of the message, see failure()), confirmDelete.
 
-// Language names are shown in their own language, so they're the same in every
-// dictionary. 'device' is saved as null: follow the browser's language.
+// 'device' is saved as null: follow the browser's language.
 const languageOptions = [
   { code: 'device', label: 'account.languageDevice' },
-  { code: 'en', label: 'language.en' },
-  { code: 'hu', label: 'language.hu' },
+  ...languages.map((code) => ({ code, label: languageNames[code] })),
 ];
 
 const themeOptions = [
@@ -115,7 +113,7 @@ export function render(container, state) {
         renderAbout(state.about),
       ),
     ),
-    privacyDialog(state),
+    legalDialog(state),
   );
 }
 
@@ -224,7 +222,7 @@ function renderDataSection(view, offline) {
 
 /**
  * The fine print at the bottom: no warranty, not medical advice, keep a copy;
- * the privacy notice; the release (from /api/about, left out until it's loaded).
+ * the privacy notice and the terms; the release (from /api/about, left out until it's loaded).
  */
 function renderAbout(about) {
   return h(
@@ -236,7 +234,7 @@ function renderAbout(about) {
       h('span', { class: 'icon icon-info', 'aria-hidden': 'true' }),
       h('span', {}, t('account.disclaimer')),
     ),
-    h('p', { class: 'app-version' }, privacyButton('account.privacy')),
+    legalLinks(),
     about && h('p', { class: 'muted app-version' }, t('account.version', { version: about.version })),
   );
 }

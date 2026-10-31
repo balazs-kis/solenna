@@ -50,8 +50,8 @@ const SESSION_REFRESH_INTERVAL: i64 = 24 * 60 * 60;
 /// The cookie itself lives long (400 days is the browser maximum); the DB expiry
 /// above is what actually ends a session.
 const SESSION_COOKIE_MAX_AGE: i64 = 400 * 24 * 60 * 60;
-/// A user who signed in but never agreed to the privacy notice (and so has no
-/// data) is deleted after this long.
+/// A user who signed in but never agreed (to the terms and the health-data
+/// consent, and so has no data) is deleted after this long.
 const UNCONSENTED_USER_TTL: i64 = 24 * 60 * 60;
 
 pub fn routes() -> Router<AppState> {
@@ -61,8 +61,8 @@ pub fn routes() -> Router<AppState> {
         .route("/auth/logout", post(logout))
 }
 
-/// The signed-in user, who has agreed to the privacy notice. Use it as a
-/// handler argument: before the handler runs, requests without a valid session
+/// The signed-in user, who has agreed to the terms and the health-data
+/// consent. Use it as a handler argument: before the handler runs, requests without a valid session
 /// are rejected with 401, and users who haven't agreed yet with 403
 /// `consent_required`. So no route stores or returns health data without
 /// consent. Only the routes needed before agreeing take [`SignedIn`] instead.
@@ -82,8 +82,8 @@ impl FromRequestParts<AppState> for CurrentUser {
     }
 }
 
-/// Any signed-in user, whether or not they've agreed to the privacy notice yet
-/// (401 without a valid session). Only for `GET /api/me`, giving consent, and
+/// Any signed-in user, whether or not they've agreed to the terms and the
+/// health-data consent yet (401 without a valid session). Only for `GET /api/me`, giving consent, and
 /// deleting the account (declining); everything else takes [`CurrentUser`].
 pub struct SignedIn {
     pub id: i64,
@@ -475,8 +475,8 @@ fn login_user(
     if let Some(previous) = previous {
         tx.execute("DELETE FROM sessions WHERE token_hash = ?", [previous])?;
     }
-    // Housekeeping: someone who signed in but never agreed to the privacy
-    // notice can't have stored anything; their row (and sessions) go after a
+    // Housekeeping: someone who signed in but never agreed (to the terms and
+    // the health-data consent) can't have stored anything; their row (and sessions) go after a
     // day. Before the upsert, so a returning user just starts over.
     tx.execute(
         "DELETE FROM users WHERE consented_at IS NULL AND created_at <= ?",
@@ -501,8 +501,8 @@ fn login_user(
     Ok((token, user_id))
 }
 
-/// Returns the session's user and whether they've agreed to the privacy
-/// notice, extending the session if it is due.
+/// Returns the session's user and whether they've agreed (to the terms and
+/// the health-data consent), extending the session if it is due.
 fn lookup_session(
     conn: &Connection,
     hash: &[u8],
@@ -602,7 +602,8 @@ fn read_cookie(headers: &HeaderMap, name: &str, secure: bool) -> Option<String> 
 
 /// Signs a user in directly (skipping Google), with `email` as their pending
 /// profile, and returns a `Cookie` header value for the session. The user has
-/// agreed to the privacy notice. For tests of any route that needs a session.
+/// agreed to the terms and the health-data consent. For tests of any route
+/// that needs a session.
 #[cfg(test)]
 pub async fn test_session(state: &AppState, sub: &'static str, email: &'static str) -> String {
     let cookie = test_session_without_consent(state, sub, email).await;
@@ -620,7 +621,8 @@ pub async fn test_session(state: &AppState, sub: &'static str, email: &'static s
     cookie
 }
 
-/// Like `test_session`, for a user who hasn't agreed to the privacy notice yet.
+/// Like `test_session`, for a user who hasn't agreed to the terms and the
+/// health-data consent yet.
 #[cfg(test)]
 pub async fn test_session_without_consent(
     state: &AppState,

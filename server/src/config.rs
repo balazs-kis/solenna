@@ -9,7 +9,8 @@ pub struct Config {
     pub google_client_id: String,
     pub google_client_secret: String,
     /// Who runs this server and how to reach them (free text, e.g. a name and an
-    /// email address), shown in the privacy notice as the data controller.
+    /// email address), shown in the privacy notice as the data controller
+    /// and in the terms as the provider.
     pub contact: String,
 }
 

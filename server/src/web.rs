@@ -20,8 +20,13 @@ pub async fn static_handler(method: Method, uri: Uri) -> Response {
         return AppError::MethodNotAllowed.into_response();
     }
 
-    let path = uri.path().trim_start_matches('/');
-    let path = if path.is_empty() { "index.html" } else { path };
+    let path = match uri.path().trim_start_matches('/') {
+        "" => "index.html",
+        // The privacy notice and the terms as pages of their own, for links
+        // from outside the app (Google's sign-in setup asks for both).
+        "privacy" | "terms" => "legal.html",
+        path => path,
+    };
 
     if let Some(file) = Assets::get(path) {
         return file_response(file);

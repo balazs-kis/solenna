@@ -23,6 +23,16 @@ In Google Cloud Console (APIs & Services > Credentials), open the OAuth client a
 https://solenna.example.com/auth/google/callback
 ```
 
+To publish the app (so any Google account can sign in, not just test users), the Branding page needs these links, and `example.com` under Authorized domains:
+
+| Field            | URL                                    |
+|------------------|----------------------------------------|
+| Home page        | `https://solenna.example.com`          |
+| Privacy policy   | `https://solenna.example.com/privacy`  |
+| Terms of service | `https://solenna.example.com/terms`    |
+
+Both texts are written for an operator in Hungary (Hungarian law in the terms, the Hungarian data protection authority in the privacy notice), and the privacy notice describes this README's backup and log setup. If either doesn't fit your server, change `privacy.*` and `terms.*` in `web/i18n/`.
+
 ### 2. Configuration
 
 The server needs no checkout of the repo, only two files from it, in a directory of their own (e.g. `/srv/solenna`):

@@ -41,12 +41,14 @@ server/            Rust crate
   migrations/      0001_init.sql, 0002_....sql (embedded with include_str!)
 web/               static frontend, served as-is
   index.html
+  legal.html       the privacy notice and terms as pages (/privacy, /terms)
   favicon.ico      generated (see design/)
   manifest.webmanifest
   sw.js
   css/
   js/
     app.js         entry point, path → view map, nav, render
+    legal-page.js  entry point of legal.html
     router.js      HOME, navigate(), link interception
     api.js         fetch wrapper
     dom.js         h() / svg() element helpers
@@ -58,7 +60,7 @@ web/               static frontend, served as-is
     i18n.js        t() + language selection
     theme.js       theme setting (System / Light / Dark, per device)
     theme-init.js  classic script: applies the saved theme before first paint
-    views/         one module per screen (plus shared pieces like avatar.js)
+    views/         one module per screen (plus shared pieces like avatar.js, legal.js)
   i18n/
     en.json
     hu.json
@@ -95,7 +97,7 @@ All of this lives in `server/src/auth.rs`.
 - **Profile picture:** at sign-in the server downloads the `picture` claim's image once (`avatar.rs`: https on `*.googleusercontent.com` only, resized to 384px (over 5x the largest, 72px avatar) and converted to WebP through Google's URL suffix (`=s384-c-rw`; a PNG original would otherwise come back as a PNG over the size limit), at most 200 KB, type detected from the bytes as JPEG/PNG/WebP). It goes to the browser with the profile, as a `data:` URL (hence `img-src 'self' data:` in the CSP). The browser never loads anything from Google. A failed download just means no picture, and never fails the sign-in. The shared HTTP client follows no redirects. The frontend shows a monogram (first letter of the name, or the email) when there's no picture or it fails to load.
 - A failed or cancelled sign-in redirects to `/?auth_error=failed|cancelled`. The frontend reads the parameter, removes it from the URL, and shows the message on the login screen.
 - **Open signup:** any Google account can sign in, and a user row is created on first login.
-- **Consent before any data:** health data needs explicit consent (GDPR Art. 9(2)(a)), so a new user first sees the consent screen (`views/consent.js`): the key points, a link to the privacy notice, a checkbox and Continue (`POST /api/me/consent` sets `users.consented_at`), or "I don't agree", which deletes the sign-in (`DELETE /api/me`). Until then the server answers every data route with 403 `consent_required`, and the app shows neither navigation nor screens. A user who never agrees is deleted at the next sign-in after a day (`login_user`'s housekeeping). Both of those deletions rely on an unconsented user having no data, which holds because nothing is stored before consent. So never set `consented_at` back to NULL: if the notice ever needs new consent, that needs its own design (keep the data, allow export, confirm before deleting).
+- **Consent before any data:** health data needs explicit consent (GDPR Art. 9(2)(a)), so a new user first sees the consent screen (`views/consent.js`): the key points, links to the privacy notice and the terms, two checkboxes and Continue. Both boxes are required: "I'm 16 or older and accept the terms", and the explicit health-data consent, kept as a box of its own because the GDPR wants consent distinguishable from anything else agreed to (Art. 7(2)). Continue records both with one date (`POST /api/me/consent` sets `users.consented_at`); "I don't agree" deletes the sign-in (`DELETE /api/me`). Until then the server answers every data route with 403 `consent_required`, and the app shows neither navigation nor screens. A user who never agrees is deleted at the next sign-in after a day (`login_user`'s housekeeping). Both of those deletions rely on an unconsented user having no data, which holds because nothing is stored before consent. So never set `consented_at` back to NULL: if the notice ever needs new consent, that needs its own design (keep the data, allow export, confirm before deleting). Until that exists, the notice and the terms only promise that a change appears with a new "Last updated" date, not that the app asks again.
 - **Sessions:** a random 32-byte token sent to the browser as a cookie (`HttpOnly; SameSite=Lax; Path=/`, plus `Secure` when `SOLENNA_BASE_URL` is https). The DB stores only the **SHA-256 hash** of the token. The server-side expiry is 30 days, sliding, and the extension is written at most once a day per session. The cookie's own `Max-Age` is long (400 days), because the DB expiry is what counts.
 - **Cookie names:** over https, both cookies get the `__Host-` prefix (`cookie_name()`), so a site on a sibling subdomain can't plant its own session or sign-in cookie (cookie tossing) and sign the user into another account. The prefix requires `Path=/`, so every cookie uses it. Plain http (local dev) keeps the plain names.
 - **Handlers get the user from the `CurrentUser` extractor.** Adding it as a handler argument makes the route require a session (401 otherwise) and consent (403 `consent_required` otherwise), and `user.id` is the only source of the user ID. Only `GET /api/me`, `POST /api/me/consent` and `DELETE /api/me` take `SignedIn` instead (session only), because they're needed before agreeing. New routes use `CurrentUser`.
@@ -115,7 +117,7 @@ This app stores health data. Treat it accordingly.
 - Users can **export all their data** (`GET /api/me/export`, JSON) and **delete their account** (`DELETE /api/me`), which hard-deletes the user row and, through `ON DELETE CASCADE`, all their other rows. The server's export has no identity; the browser adds its copy of the profile (name, email, picture) before saving the file. The export's `account` has `created_at` and `consented_at`. Every new per-user table needs `ON DELETE CASCADE` on its `user_id` and a place in the export.
 - Set security headers on every response: a strict CSP (`default-src 'self'`, plus `img-src data:` for the profile picture), `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`. `/api/*` and `/auth/*` responses also get `Cache-Control: no-store`, so health data and session cookies never sit in a cache.
 - Deleting an account also checkpoints the WAL (`db::checkpoint`): `secure_delete` zeroes the rows, but in WAL mode the old pages would stay in the files until the next checkpoint. The checkpoint waits for readers up to `busy_timeout`; if a reader (e.g. a long backup) still holds the database, it logs a warning and the WAL is emptied at the next checkpoint, at the latest the next start. A failed checkpoint never fails the deletion.
-- **Privacy notice and disclaimer:** the privacy notice is a dialog (`views/privacy.js`: `privacyButton()` opens it, `privacyDialog(state)` renders it, open while `state.privacyOpen`). The login screen, the consent screen and Account each have both, so it shows signed out and before agreeing too. It names who runs the server from `SOLENNA_CONTACT` (via the public `GET /api/about`, with the version), and describes exactly what this section and Auth do, so keep it in step with them when either changes (and update its "Last updated" date). The login screen has a one-line "as is, no warranty, not a medical device" note; Account has the longer disclaimer at the bottom, above the version.
+- **Privacy notice and terms:** two documents in `views/legal.js` (`documents`), rendered by `legalDocument()` from the dictionaries (`privacy.*`, `terms.*`), so each text exists once. In the app they're dialogs: `legalLinks()` renders links to both, `legalDialog(state)` the open one (`state.legalOpen`: `'privacy'` or `'terms'`). The login screen, the consent screen and Account each have both, so they show signed out and before agreeing too. The links are real links to `/privacy` and `/terms`: a click opens the dialog, a new tab opens the page. Those two paths are pages of their own for links from outside the app (Google's sign-in branding asks for both): the server serves `legal.html` for them (`web.rs`, and `PAGES` in `sw.js`), and `js/legal-page.js` renders the document with no sign-in, in `?lang=` or the device's language, with a language select next to the title (built from `languages` / `languageNames` in `i18n.js`, like Account's). Both documents name who runs the server from `SOLENNA_CONTACT` (via the public `GET /api/about`, with the version). The privacy notice describes exactly what this section and Auth do, so keep it in step with them when either changes (and update its "Last updated" date). The terms: 16 or older, fair use, no warranty and not a medical device, limited liability (as far as the law allows), the service can end, Hungarian law. The login screen has a one-line "as is, no warranty, not a medical device" note; Account has the longer disclaimer at the bottom, above the links and the version.
 - HTTPS is terminated by a reverse proxy in front of the container. The app itself speaks plain HTTP and trusts `SOLENNA_BASE_URL` for building redirect URLs.
 
 ## Frontend conventions
@@ -190,7 +192,7 @@ All configuration comes from environment variables set in `compose.yaml` / `.env
 | `SOLENNA_PORT`         | Listen port (default `8080`)                     |
 | `GOOGLE_CLIENT_ID`     | OAuth client ID                                  |
 | `GOOGLE_CLIENT_SECRET` | OAuth client secret                              |
-| `SOLENNA_CONTACT`      | Who runs the server, shown in the privacy notice |
+| `SOLENNA_CONTACT`      | Who runs the server, shown in the privacy notice and terms |
 
 `.env` is gitignored. `.env.example` is committed with placeholder values only. The app fails fast on startup if a required variable is missing.
 

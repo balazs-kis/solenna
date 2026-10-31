@@ -563,7 +563,7 @@ h3 {
   background: var(--accent-soft);
 }
 
-/* Account's fine print: the disclaimer, the privacy notice, the version. */
+/* Account's fine print: the disclaimer, the privacy notice and terms, the version. */
 .about {
   display: grid;
   gap: 0.75rem;
@@ -961,8 +961,8 @@ h3 {
   }
 }
 
-/* The privacy notice's text, in its dialog. */
-.privacy {
+/* The privacy notice's and the terms' text, in a dialog or on its own page. */
+.legal {
   display: grid;
   gap: 1.25rem;
   line-height: 1.5;
@@ -984,11 +984,70 @@ h3 {
   }
 }
 
-.privacy-contact {
+.legal-contact {
   font-weight: 600;
 }
 
-/* A button that reads as a link inside text (opens the privacy notice).
+/* The links to the privacy notice and the terms, side by side. */
+.legal-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.25rem 1.25rem;
+  margin: 0;
+  font-size: 0.875rem;
+
+  .consent-card & {
+    justify-content: start;
+  }
+}
+
+/* The privacy notice and the terms as pages of their own (/privacy, /terms). */
+.legal-page {
+  display: grid;
+  gap: var(--gap);
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem calc(1.5rem + env(safe-area-inset-bottom));
+}
+
+.legal-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  justify-self: start;
+  min-height: 44px;
+  color: var(--accent);
+  font-size: 1.25rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.legal-card {
+  padding: 1.5rem 1.25rem;
+}
+
+/* The title, and the language select at the card's right end (on a line of
+   its own, still on the right, when a long title needs the whole width). */
+.legal-card-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  margin-bottom: 1rem;
+
+  & h1 {
+    flex: 1 1 auto;
+    margin: 0;
+    font-size: 1.75rem;
+  }
+
+  & .setting-select {
+    margin-left: auto;
+  }
+}
+
+/* A link inside text (opens the privacy notice or the terms).
    Inline, so it's exempt from the 44px target like any text link. */
 .inline-link {
   padding: 0;

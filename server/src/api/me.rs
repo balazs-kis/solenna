@@ -1,5 +1,6 @@
 //! The signed-in user's own account: settings, the profile handover after
-//! sign-in, consent to the privacy notice, data export, and account deletion.
+//! sign-in, agreeing (the terms and the health-data consent), data export,
+//! and account deletion.
 
 use std::time::Instant;
 
@@ -35,7 +36,8 @@ pub struct Settings {
 
 /// The signed-in user's settings. 401 when not signed in, which is how the
 /// frontend decides to show the login screen. `consented_at` is null until the
-/// user agrees to the privacy notice; the frontend asks for that first.
+/// user agrees (to the terms and the health-data consent); the frontend asks
+/// for that first.
 ///
 /// `profile` (name, email, picture as a `data:` URL) is only there on the
 /// session's first call after signing in: the server doesn't store it, so the
@@ -67,7 +69,7 @@ pub async fn get(State(state): State<AppState>, user: SignedIn) -> Result<Json<V
     })))
 }
 
-/// When the user agreed to the privacy notice (Unix seconds), if they have.
+/// When the user agreed (Unix seconds), if they have.
 fn read_consent(conn: &rusqlite::Connection, user_id: i64) -> rusqlite::Result<Option<i64>> {
     conn.query_row(
         "SELECT consented_at FROM users WHERE id = ?",
@@ -76,8 +78,9 @@ fn read_consent(conn: &rusqlite::Connection, user_id: i64) -> rusqlite::Result<O
     )
 }
 
-/// The user agrees to the privacy notice: explicit consent to storing their
-/// health data. Until then every data route answers 403 `consent_required`
+/// The user agrees: accepts the terms and gives explicit consent to storing
+/// their health data (two checkboxes, both required, so one date records
+/// both). Until then every data route answers 403 `consent_required`
 /// (see `CurrentUser`). Agreeing again keeps the first date.
 pub async fn consent(
     State(state): State<AppState>,
@@ -95,7 +98,10 @@ pub async fn consent(
             Ok(read_consent(conn, user.id)?)
         })
         .await?;
-    tracing::info!("user {} agreed to the privacy notice", user.id);
+    tracing::info!(
+        "user {} agreed to the terms and the health-data consent",
+        user.id
+    );
     Ok(Json(json!({ "consented_at": consented_at })))
 }
 
@@ -180,7 +186,7 @@ pub async fn export(
 
 /// Hard-deletes the user. Their sessions, weigh-ins and periods go with them
 /// (`ON DELETE CASCADE`), and this browser's session cookie is cleared. Also
-/// how a user declines the privacy notice, so it doesn't need consent.
+/// how a user declines to agree, so it doesn't need consent.
 /// secure_delete zeroes the rows, but in WAL mode the old pages stay in the
 /// files until a checkpoint, so one runs straight away (see `db::checkpoint`).
 pub async fn delete(State(state): State<AppState>, user: SignedIn) -> Result<Response, AppError> {
