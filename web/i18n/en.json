@@ -124,6 +124,7 @@
   "cycle.historyFuture": "This can't be in the future.",
   "cycle.historyEndBeforeStart": "It can't end before it started.",
   "cycle.historyTooLong": "A period lasts at most {days}.",
+  "cycle.historyAfterOngoing": "The period that started on {date} is still marked as ongoing, so nothing can come after it yet. End it in the calendar first (“Bleeding stopped this day”).",
   "cycle.historyOverlap": "This overlaps another period ({range}).",
   "cycle.ovulationOn": "Estimated ovulation {when}",
   "cycle.averages": "Average cycle {cycle}, period {period}",

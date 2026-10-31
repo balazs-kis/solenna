@@ -216,8 +216,10 @@ export function assumedEnd(day, periods, periodLength, today) {
  * Past periods entered all at once ("Add past periods"): `rows` are
  * `{ start, end }` as typed, '' where empty. Each row becomes
  * `{ period: { start_day, end_day } }`, or `{ error }` with 'missingStart',
- * 'future', 'endBeforeStart', 'tooLong' or 'overlap' (then also `other`, the
- * period it runs into: a logged one, or a valid row above it). A row with
+ * 'future', 'endBeforeStart', 'tooLong', 'overlap' (then also `other`, the
+ * period it runs into: a logged one, or a valid row above it) or
+ * 'afterOngoing' (after a logged period that was never ended; `other` is that
+ * period). A row with
  * neither date is skipped (null). Without an end, a row gets the same end as
  * a start logged on the calendar (assumedEnd(), with the other rows counting
  * as periods too): the average length, never into the next period, and
@@ -225,6 +227,7 @@ export function assumedEnd(day, periods, periodLength, today) {
  */
 export function checkPastPeriods(rows, periods, periodLength, today) {
   const logged = periods.map((p) => ({ start_day: p.start_day, end_day: loggedEnd(p, today) }));
+  const ongoing = periods.find((p) => p.end_day === null);
   const starts = [...periods, ...rows.filter((row) => row.start).map((row) => ({ start_day: row.start }))]
     .toSorted((a, b) => a.start_day.localeCompare(b.start_day));
   const saved = [];
@@ -239,6 +242,9 @@ export function checkPastPeriods(rows, periods, periodLength, today) {
     const range = { start_day: row.start, end_day: end ?? today };
     const other = [...logged, ...saved].find((o) => range.start_day <= o.end_day && o.start_day <= range.end_day);
     if (other) return { error: 'overlap', other };
+    // The server counts an ongoing period as open-ended. One that has run past
+    // the longest period (never ended) still blocks every later start.
+    if (ongoing && range.end_day >= ongoing.start_day) return { error: 'afterOngoing', other: ongoing };
     saved.push(range);
     return { period: { start_day: row.start, end_day: end } };
   });

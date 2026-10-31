@@ -91,6 +91,10 @@ export function render(container, state) {
   const range = ranges.find((r) => r.id === (view.range ?? DEFAULT_RANGE));
   const today = todayIso();
   const from = range.days ? addDays(today, -range.days) : (state.weights[0]?.day ?? today);
+  // Normally today; a weigh-in logged where the date is already a day ahead
+  // (another time zone) would otherwise sit right of the chart.
+  const latestDay = state.weights.at(-1)?.day;
+  const to = latestDay > today ? latestDay : today;
   const inRange = state.weights.filter((entry) => entry.day >= from);
   // From the whole history, so the line doesn't start from scratch at the range's edge.
   const trend = weightTrend(state.weights).filter((entry) => entry.day >= from);
@@ -105,7 +109,7 @@ export function render(container, state) {
       renderForm(view, state.offline),
       state.weights.length === 0
         ? h('p', { class: 'card muted weight-main' }, t('weight.empty'))
-        : [renderChartCard(range, inRange, trend, from, today), renderHistory(inRange, view, state.offline)],
+        : [renderChartCard(range, inRange, trend, from, to), renderHistory(inRange, view, state.offline)],
     ),
   );
 }
@@ -186,7 +190,7 @@ function renderHero(latest, trend) {
   });
 }
 
-function renderChartCard(range, inRange, trend, from, today) {
+function renderChartCard(range, inRange, trend, from, to) {
   return h(
     'section',
     { class: 'card stack weight-main' },
@@ -208,7 +212,7 @@ function renderChartCard(range, inRange, trend, from, today) {
     ),
     inRange.length === 0
       ? h('p', { class: 'muted' }, t('weight.emptyRange'))
-      : renderChart(inRange, trend, from, today),
+      : renderChart(inRange, trend, from, to),
   );
 }
 

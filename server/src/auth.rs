@@ -36,6 +36,7 @@ use crate::{
 const GOOGLE_AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 
+// Cookie names without their `__Host-` prefix (see `cookie_name`).
 const SESSION_COOKIE: &str = "solenna_session";
 const OAUTH_COOKIE: &str = "solenna_oauth";
 /// How long the user has to finish signing in at Google.
@@ -69,7 +70,9 @@ impl FromRequestParts<AppState> for CurrentUser {
     type Rejection = AppError;
 
     async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, AppError> {
-        let token = read_cookie(&parts.headers, SESSION_COOKIE).ok_or(AppError::Unauthorized)?;
+        let secure = state.config.secure_cookies();
+        let token =
+            read_cookie(&parts.headers, SESSION_COOKIE, secure).ok_or(AppError::Unauthorized)?;
         let hash = hash_token(&token);
         let now = unix_now();
         let session = hash.clone();
@@ -211,7 +214,6 @@ async fn start(State(state): State<AppState>) -> Result<Response, AppError> {
     let oauth_cookie = cookie(
         OAUTH_COOKIE,
         &format!("{csrf_state}.{verifier}"),
-        "/auth",
         OAUTH_COOKIE_MAX_AGE,
         state.config.secure_cookies(),
     );
@@ -240,7 +242,7 @@ async fn callback(
     params: Result<Query<CallbackParams>, QueryRejection>,
 ) -> Response {
     let secure = state.config.secure_cookies();
-    let clear_oauth = cookie(OAUTH_COOKIE, "", "/auth", 0, secure);
+    let clear_oauth = cookie(OAUTH_COOKIE, "", 0, secure);
 
     let result = match params {
         Ok(Query(params)) => finish_login(&state, &headers, params).await,
@@ -255,7 +257,7 @@ async fn callback(
                 (header::SET_COOKIE, clear_oauth),
                 (
                     header::SET_COOKIE,
-                    cookie(SESSION_COOKIE, &token, "/", SESSION_COOKIE_MAX_AGE, secure),
+                    cookie(SESSION_COOKIE, &token, SESSION_COOKIE_MAX_AGE, secure),
                 ),
             ]),
             Redirect::to("/"),
@@ -294,7 +296,8 @@ async fn finish_login(
         });
     }
 
-    let oauth_cookie = read_cookie(headers, OAUTH_COOKIE).ok_or_else(|| {
+    let secure = state.config.secure_cookies();
+    let oauth_cookie = read_cookie(headers, OAUTH_COOKIE, secure).ok_or_else(|| {
         tracing::warn!("sign-in callback without oauth cookie (expired or different browser)");
         LoginError::Failed
     })?;
@@ -321,7 +324,7 @@ async fn finish_login(
     };
 
     // Signing in again in this browser replaces its previous session.
-    let previous = read_cookie(headers, SESSION_COOKIE).map(|token| hash_token(&token));
+    let previous = read_cookie(headers, SESSION_COOKIE, secure).map(|token| hash_token(&token));
     let sub = claims.sub;
     let (token, user_id) = state
         .db
@@ -485,7 +488,7 @@ fn lookup_session(conn: &Connection, hash: &[u8], now: i64) -> Result<Option<i64
 }
 
 async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Result<Response, AppError> {
-    if let Some(token) = read_cookie(&headers, SESSION_COOKIE) {
+    if let Some(token) = read_cookie(&headers, SESSION_COOKIE, state.config.secure_cookies()) {
         let hash = hash_token(&token);
         state
             .db
@@ -504,7 +507,7 @@ async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Result<Res
 
 /// A `Set-Cookie` value that removes the session cookie (logout, account deletion).
 pub fn clear_session_cookie(config: &Config) -> String {
-    cookie(SESSION_COOKIE, "", "/", 0, config.secure_cookies())
+    cookie(SESSION_COOKIE, "", 0, config.secure_cookies())
 }
 
 fn redirect_uri(config: &Config) -> String {
@@ -522,12 +525,28 @@ fn hash_token(token: &str) -> Vec<u8> {
     Sha256::digest(token.as_bytes()).to_vec()
 }
 
-fn cookie(name: &str, value: &str, path: &str, max_age: i64, secure: bool) -> String {
-    let secure = if secure { "; Secure" } else { "" };
-    format!("{name}={value}; Path={path}; Max-Age={max_age}; HttpOnly; SameSite=Lax{secure}")
+/// Over https, cookie names get the `__Host-` prefix. The browser then only
+/// accepts the cookie from this exact host, over https, with `Path=/` and no
+/// `Domain`, so a site on a sibling subdomain can't plant its own session or
+/// sign-in cookie here (cookie tossing) and sign the user into another account.
+/// Plain http (local dev) can't use the prefix.
+fn cookie_name(name: &str, secure: bool) -> String {
+    if secure {
+        format!("__Host-{name}")
+    } else {
+        name.to_string()
+    }
 }
 
-fn read_cookie(headers: &HeaderMap, name: &str) -> Option<String> {
+/// Always `Path=/`: the `__Host-` prefix requires it.
+fn cookie(name: &str, value: &str, max_age: i64, secure: bool) -> String {
+    let name = cookie_name(name, secure);
+    let secure = if secure { "; Secure" } else { "" };
+    format!("{name}={value}; Path=/; Max-Age={max_age}; HttpOnly; SameSite=Lax{secure}")
+}
+
+fn read_cookie(headers: &HeaderMap, name: &str, secure: bool) -> Option<String> {
+    let name = cookie_name(name, secure);
     headers
         .get_all(header::COOKIE)
         .iter()
@@ -1002,15 +1021,28 @@ mod tests {
 
     #[test]
     fn cookies_are_secure_over_https() {
-        assert!(cookie("a", "b", "/", 1, true).ends_with("; Secure"));
+        assert_eq!(
+            cookie(SESSION_COOKIE, "b", 1, true),
+            "__Host-solenna_session=b; Path=/; Max-Age=1; HttpOnly; SameSite=Lax; Secure"
+        );
+        assert_eq!(
+            cookie(SESSION_COOKIE, "b", 1, false),
+            "solenna_session=b; Path=/; Max-Age=1; HttpOnly; SameSite=Lax"
+        );
         let mut headers = HeaderMap::new();
         headers.insert(
             header::COOKIE,
-            HeaderValue::from_static("x=1; solenna_session=abc; y=2"),
+            HeaderValue::from_static("x=1; solenna_session=abc; __Host-solenna_session=def; y=2"),
         );
         assert_eq!(
-            read_cookie(&headers, SESSION_COOKIE).as_deref(),
+            read_cookie(&headers, SESSION_COOKIE, false).as_deref(),
             Some("abc")
+        );
+        // Over https, only the prefixed cookie counts: one without the prefix
+        // may have been set by another subdomain.
+        assert_eq!(
+            read_cookie(&headers, SESSION_COOKIE, true).as_deref(),
+            Some("def")
         );
     }
 }

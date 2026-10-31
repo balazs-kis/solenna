@@ -299,3 +299,16 @@ test('past periods: overlaps with logged periods and with rows above are caught'
   assert.deepEqual(second, { error: 'overlap', other: { start_day: '2026-10-12', end_day: '2026-10-16' } });
   assert.deepEqual(third, { error: 'overlap', other: { start_day: '2026-10-28', end_day: '2026-10-30' } });
 });
+
+test('past periods: an ongoing period that was never ended blocks later rows, like on the server', () => {
+  // Started Sep 1 and never ended: it covers Sep 1-15 on the calendar, but
+  // the server counts it as open-ended.
+  const stale = period('2026-09-01', null);
+  const rows = [
+    { start: '2026-09-20', end: '2026-09-24' },
+    { start: '2026-08-01', end: '2026-08-05' },
+  ];
+  const [after, before] = checkPastPeriods(rows, [stale], 5, '2026-10-30');
+  assert.deepEqual(after, { error: 'afterOngoing', other: stale });
+  assert.ok(before.period);
+});

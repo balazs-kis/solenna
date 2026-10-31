@@ -229,6 +229,9 @@ function overdueLines({ expectedStart, late }, today) {
 function renderQuickAction(analysis, status, offline) {
   const { last, today } = analysis;
 
+  // Logged on a device whose date is already a day ahead (another time zone):
+  // it hasn't started here yet, so there's nothing to start or stop today.
+  if (last && last.start_day > today) return null;
   if (last?.end_day === null) {
     // The length limit counts from the logged start, like the server's.
     const loggedDays = daysBetween(last.start_day, today) + 1;
@@ -840,6 +843,8 @@ function renderHistoryRow(row, index, result, periodLength) {
   if (result?.error === 'overlap') {
     const range = t('cycle.dateRange', { from: formatDay(result.other.start_day), to: formatDay(result.other.end_day) });
     message = h('p', { class: 'error' }, t('cycle.historyOverlap', { range }));
+  } else if (result?.error === 'afterOngoing') {
+    message = h('p', { class: 'error' }, t('cycle.historyAfterOngoing', { date: formatDay(result.other.start_day) }));
   } else if (result?.error === 'tooLong') {
     message = h('p', { class: 'error' }, t('cycle.historyTooLong', { days: formatDays(MAX_PERIOD_DAYS) }));
   } else if (result?.error) {

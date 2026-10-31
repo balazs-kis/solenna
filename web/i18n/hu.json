@@ -124,6 +124,7 @@
   "cycle.historyFuture": "Ez nem lehet a jövőben.",
   "cycle.historyEndBeforeStart": "Nem érhet véget, mielőtt elkezdődött.",
   "cycle.historyTooLong": "Egy menstruáció legfeljebb {days} hosszú.",
+  "cycle.historyAfterOngoing": "A {date} napon kezdődött menstruáció még folyamatban lévőként szerepel, ezért utána még nem jöhet másik. Előbb zárd le a naptárban („Ezen a napon ért véget a vérzés”).",
   "cycle.historyOverlap": "Ez átfedésben van egy másik menstruációval ({range}).",
   "cycle.ovulationOn": "Becsült peteérés: {when}",
   "cycle.averages": "Átlagos ciklus: {cycle}, menstruáció: {period}",
