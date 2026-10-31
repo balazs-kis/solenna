@@ -8,6 +8,7 @@ import { getState, setState, subscribe } from './store.js';
 import { applyGlow, applyTheme, savedTheme } from './theme.js';
 import * as account from './views/account.js';
 import { avatar, displayName } from './views/avatar.js';
+import * as consent from './views/consent.js';
 import * as cycle from './views/cycle.js';
 import * as login from './views/login.js';
 import * as notFound from './views/not-found.js';
@@ -48,8 +49,11 @@ function render(state) {
   }
 
   const signedIn = state.user !== null;
+  // The app proper (navigation, the screens' data) only once the user has
+  // agreed to the privacy notice; until then the consent screen asks for it.
+  const consented = signedIn && Boolean(state.user.consentedAt);
   if (!signedIn) loadedView = null;
-  const view = signedIn ? (isAvailable(state.path, state.user) ? routes[state.path] : notFound) : login;
+  const view = pickView(state);
   document.title = `${t(view.title)} · ${t('app.name')}`;
   // A view's optional glow() picks the colour behind it.
   applyGlow(view.glow?.(state) ?? 'neutral');
@@ -62,11 +66,11 @@ function render(state) {
     .filter((element) => element.scrollTop > 0)
     .map((element) => [element.id, element.scrollTop]);
 
-  const main = h('main', { class: signedIn ? 'main' : 'main main-centered', id: 'main' });
+  const main = h('main', { class: consented ? 'main' : 'main main-centered', id: 'main' });
   view.render(main, state);
   if (state.offline) main.prepend(renderOfflineBanner(state));
   announceOffline(state);
-  root.replaceChildren(...(signedIn ? [renderNav(state), main] : [main]));
+  root.replaceChildren(...(consented ? [renderNav(state), main] : [main]));
   // A view can render one modal dialog (`<dialog data-modal>`). It's rebuilt
   // with the page, so it's opened again each time; focus is restored below.
   root.querySelector('dialog[data-modal]')?.showModal();
@@ -89,10 +93,16 @@ function render(state) {
   // A view's optional load() fetches its data each time the view becomes
   // active (not while offline: the screen shows the data it already has).
   // Last, because it calls setState, which renders again.
-  if (signedIn && view !== loadedView && !state.offline) {
+  if (consented && view !== loadedView && !state.offline) {
     loadedView = view;
     view.load?.();
   }
+}
+
+function pickView(state) {
+  if (!state.user) return login;
+  if (!state.user.consentedAt) return consent;
+  return isAvailable(state.path, state.user) ? routes[state.path] : notFound;
 }
 
 /** A known screen whose feature (if any) the user has turned on. */
@@ -176,7 +186,7 @@ async function loadUser() {
     // used, if it belongs to the same user.
     const kept = readSnapshot()?.user;
     const profile = me.profile ?? (kept?.id === me.id ? kept.profile : null);
-    const user = { id: me.id, settings: me.settings, profile };
+    const user = { id: me.id, consentedAt: me.consented_at, settings: me.settings, profile };
     // The account's language, or the browser's when the user chose "same as
     // device" (null). This device remembers it for the login screen.
     const language = user.settings.language;
@@ -202,12 +212,25 @@ function checkDate() {
   if (today !== getState().today) setState({ today });
 }
 
+/**
+ * Public facts about the server, the same for everyone: the release and who
+ * runs it (`state.about`: { version, contact }), for Account and the privacy
+ * notice. Without them, those just leave them out.
+ */
+async function loadAbout() {
+  try {
+    setState({ about: await api('GET', '/api/about') });
+  } catch {
+    // Offline: reconnecting tries again.
+  }
+}
+
 /** Back online: fetch everything fresh, including the current screen's data. */
 async function reconnect() {
   if (getState().reconnecting) return; // A retry is already running.
   loadedView = null;
   setState({ reconnecting: true });
-  await loadUser();
+  await Promise.all([loadUser(), getState().about ? null : loadAbout()]);
   setState({ reconnecting: false });
 }
 
@@ -340,4 +363,5 @@ setState({
   authError,
 });
 loadUser();
+loadAbout();
 registerServiceWorker();

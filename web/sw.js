@@ -4,7 +4,7 @@
 // Installed apps keep serving the cached files until this file changes, so
 // VERSION is a hash of everything in web/. When any file changes, cargo test
 // fails and prints the new value to put here.
-const VERSION = 'a7e87ce6ab1a';
+const VERSION = '5b31e9d40f6a';
 const CACHE = `solenna-shell-${VERSION}`;
 
 // Every file of the shell. A cargo test checks that this lists every file in web/.
@@ -29,11 +29,13 @@ const SHELL = [
   '/js/weight-trend.js',
   '/js/views/account.js',
   '/js/views/avatar.js',
+  '/js/views/consent.js',
   '/js/views/cycle-calendar.js',
   '/js/views/cycle.js',
   '/js/views/hero.js',
   '/js/views/login.js',
   '/js/views/not-found.js',
+  '/js/views/privacy.js',
   '/js/views/weight-chart.js',
   '/js/views/weight.js',
   '/icons/apple-touch-icon.png',

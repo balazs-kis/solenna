@@ -14,7 +14,7 @@ use axum::{
     http::{HeaderValue, Method, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::{any, get, put},
+    routing::{any, get, post, put},
 };
 use serde_json::{Value, json};
 
@@ -95,7 +95,9 @@ async fn main() {
 fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/health", get(health))
+        .route("/api/about", get(about))
         .route("/api/me", get(api::me::get).delete(api::me::delete))
+        .route("/api/me/consent", post(api::me::consent))
         .route("/api/me/export", get(api::me::export))
         .route("/api/me/settings", put(api::me::put_settings))
         .route(
@@ -172,16 +174,23 @@ async fn security_headers(request: Request, next: Next) -> Response {
     res
 }
 
-/// Also checks that the database answers. `version` is the release
-/// (`version` in server/Cargo.toml), shown on the Account screen.
+/// For monitoring: also checks that the database answers.
 async fn health(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
     state
         .db
         .call(|conn| Ok(conn.query_row("SELECT 1", [], |_| Ok(()))?))
         .await?;
-    Ok(Json(
-        json!({ "status": "ok", "version": env!("CARGO_PKG_VERSION") }),
-    ))
+    Ok(Json(json!({ "status": "ok" })))
+}
+
+/// Public facts about this server, for the Account screen and the privacy
+/// notice (which is shown before signing in): the release (`version` in
+/// server/Cargo.toml) and who runs it (`SOLENNA_CONTACT`).
+async fn about(State(state): State<AppState>) -> Json<Value> {
+    Json(json!({
+        "version": env!("CARGO_PKG_VERSION"),
+        "contact": state.config.contact,
+    }))
 }
 
 async fn api_not_found() -> AppError {
@@ -253,9 +262,19 @@ mod tests {
     async fn health_reports_ok() {
         let (status, _, body) = send("GET", "/api/health").await;
         assert_eq!(status, StatusCode::OK);
+        assert_eq!(body, json!({ "status": "ok" }));
+    }
+
+    #[tokio::test]
+    async fn about_needs_no_session() {
+        let (status, _, body) = send("GET", "/api/about").await;
+        assert_eq!(status, StatusCode::OK);
         assert_eq!(
             body,
-            json!({ "status": "ok", "version": env!("CARGO_PKG_VERSION") })
+            json!({
+                "version": env!("CARGO_PKG_VERSION"),
+                "contact": "Test Operator, operator@example.com",
+            })
         );
     }
 

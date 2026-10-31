@@ -50,6 +50,9 @@ const SESSION_REFRESH_INTERVAL: i64 = 24 * 60 * 60;
 /// The cookie itself lives long (400 days is the browser maximum); the DB expiry
 /// above is what actually ends a session.
 const SESSION_COOKIE_MAX_AGE: i64 = 400 * 24 * 60 * 60;
+/// A user who signed in but never agreed to the privacy notice (and so has no
+/// data) is deleted after this long.
+const UNCONSENTED_USER_TTL: i64 = 24 * 60 * 60;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -58,15 +61,38 @@ pub fn routes() -> Router<AppState> {
         .route("/auth/logout", post(logout))
 }
 
-/// The signed-in user. Use it as a handler argument; requests without a valid
-/// session are rejected with 401 before the handler runs.
+/// The signed-in user, who has agreed to the privacy notice. Use it as a
+/// handler argument: before the handler runs, requests without a valid session
+/// are rejected with 401, and users who haven't agreed yet with 403
+/// `consent_required`. So no route stores or returns health data without
+/// consent. Only the routes needed before agreeing take [`SignedIn`] instead.
 pub struct CurrentUser {
     pub id: i64,
-    /// The hash of this session's token (picks up the session's `PendingProfiles` entry).
-    pub session: Vec<u8>,
 }
 
 impl FromRequestParts<AppState> for CurrentUser {
+    type Rejection = AppError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, AppError> {
+        let user = SignedIn::from_request_parts(parts, state).await?;
+        if !user.consented {
+            return Err(AppError::Forbidden("consent_required"));
+        }
+        Ok(CurrentUser { id: user.id })
+    }
+}
+
+/// Any signed-in user, whether or not they've agreed to the privacy notice yet
+/// (401 without a valid session). Only for `GET /api/me`, giving consent, and
+/// deleting the account (declining); everything else takes [`CurrentUser`].
+pub struct SignedIn {
+    pub id: i64,
+    /// The hash of this session's token (picks up the session's `PendingProfiles` entry).
+    pub session: Vec<u8>,
+    pub consented: bool,
+}
+
+impl FromRequestParts<AppState> for SignedIn {
     type Rejection = AppError;
 
     async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, AppError> {
@@ -76,13 +102,16 @@ impl FromRequestParts<AppState> for CurrentUser {
         let hash = hash_token(&token);
         let now = unix_now();
         let session = hash.clone();
-        let user_id = state
+        let user = state
             .db
             .call(move |conn| lookup_session(conn, &hash, now))
             .await?;
-        user_id
-            .map(|id| CurrentUser { id, session })
-            .ok_or(AppError::Unauthorized)
+        user.map(|(id, consented)| SignedIn {
+            id,
+            session,
+            consented,
+        })
+        .ok_or(AppError::Unauthorized)
     }
 }
 
@@ -446,6 +475,13 @@ fn login_user(
     if let Some(previous) = previous {
         tx.execute("DELETE FROM sessions WHERE token_hash = ?", [previous])?;
     }
+    // Housekeeping: someone who signed in but never agreed to the privacy
+    // notice can't have stored anything; their row (and sessions) go after a
+    // day. Before the upsert, so a returning user just starts over.
+    tx.execute(
+        "DELETE FROM users WHERE consented_at IS NULL AND created_at <= ?",
+        [now - UNCONSENTED_USER_TTL],
+    )?;
     let user_id: i64 = tx.query_row(
         "INSERT INTO users (sub_hash, created_at, updated_at) VALUES (?1, ?2, ?2)
          ON CONFLICT (sub_hash) DO UPDATE SET updated_at = excluded.updated_at
@@ -465,16 +501,23 @@ fn login_user(
     Ok((token, user_id))
 }
 
-/// Returns the session's user, extending the session if it is due.
-fn lookup_session(conn: &Connection, hash: &[u8], now: i64) -> Result<Option<i64>, AppError> {
-    let session: Option<(i64, i64)> = conn
+/// Returns the session's user and whether they've agreed to the privacy
+/// notice, extending the session if it is due.
+fn lookup_session(
+    conn: &Connection,
+    hash: &[u8],
+    now: i64,
+) -> Result<Option<(i64, bool)>, AppError> {
+    let session: Option<(i64, i64, bool)> = conn
         .query_row(
-            "SELECT user_id, expires_at FROM sessions WHERE token_hash = ? AND expires_at > ?",
+            "SELECT s.user_id, s.expires_at, u.consented_at IS NOT NULL
+             FROM sessions s JOIN users u ON u.id = s.user_id
+             WHERE s.token_hash = ? AND s.expires_at > ?",
             (hash, now),
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
         .optional()?;
-    let Some((user_id, expires_at)) = session else {
+    let Some((user_id, expires_at, consented)) = session else {
         return Ok(None);
     };
 
@@ -484,7 +527,7 @@ fn lookup_session(conn: &Connection, hash: &[u8], now: i64) -> Result<Option<i64
             (now + SESSION_TTL, hash),
         )?;
     }
-    Ok(Some(user_id))
+    Ok(Some((user_id, consented)))
 }
 
 async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Result<Response, AppError> {
@@ -558,10 +601,32 @@ fn read_cookie(headers: &HeaderMap, name: &str, secure: bool) -> Option<String> 
 }
 
 /// Signs a user in directly (skipping Google), with `email` as their pending
-/// profile, and returns a `Cookie` header value for the session. For tests of
-/// any route that needs a session.
+/// profile, and returns a `Cookie` header value for the session. The user has
+/// agreed to the privacy notice. For tests of any route that needs a session.
 #[cfg(test)]
 pub async fn test_session(state: &AppState, sub: &'static str, email: &'static str) -> String {
+    let cookie = test_session_without_consent(state, sub, email).await;
+    state
+        .db
+        .call(move |conn| {
+            conn.execute(
+                "UPDATE users SET consented_at = 1 WHERE sub_hash = ?",
+                [sub_hash(sub)],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    cookie
+}
+
+/// Like `test_session`, for a user who hasn't agreed to the privacy notice yet.
+#[cfg(test)]
+pub async fn test_session_without_consent(
+    state: &AppState,
+    sub: &'static str,
+    email: &'static str,
+) -> String {
     let (token, user_id) = state
         .db
         .call(move |conn| login_user(conn, sub, unix_now(), None))
@@ -853,6 +918,33 @@ mod tests {
                 .await
                 .is_none()
         );
+    }
+
+    #[tokio::test]
+    async fn users_who_never_agree_are_removed_after_a_day() {
+        let state = test_state();
+        let remaining = state
+            .db
+            .call(|conn| {
+                login_user(conn, "never-agreed", NOW, None)?;
+                login_user(conn, "agreed", NOW, None)?;
+                conn.execute(
+                    "UPDATE users SET consented_at = ? WHERE sub_hash = ?",
+                    (NOW, sub_hash("agreed")),
+                )?;
+                // Just under a day later, everyone stays.
+                login_user(conn, "late", NOW + UNCONSENTED_USER_TTL - 1, None)?;
+                // A day later, the one who never agreed goes, with their session.
+                login_user(conn, "later", NOW + UNCONSENTED_USER_TTL, None)?;
+                let mut statement = conn.prepare("SELECT sub_hash FROM users ORDER BY id")?;
+                let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
+                Ok(rows.collect::<Result<Vec<_>, _>>()?)
+            })
+            .await
+            .unwrap();
+        let expected: Vec<String> = ["agreed", "late", "later"].map(sub_hash).into();
+        assert_eq!(remaining, expected);
+        assert_eq!(session_count(&state).await, 3);
     }
 
     #[tokio::test]

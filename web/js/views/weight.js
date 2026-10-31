@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { h } from '../dom.js';
+import { append, h } from '../dom.js';
 import { addDays, formatDay, formatKg, todayIso } from '../format.js';
 import { t } from '../i18n.js';
 import { getState, remember, setState } from '../store.js';
@@ -68,11 +68,11 @@ export async function load() {
 }
 
 export function render(container, state) {
-  container.append(h('h1', { id: 'page-title', tabindex: '-1' }, t('weight.title')));
+  append(container, h('h1', { id: 'page-title', tabindex: '-1' }, t('weight.title')));
   const view = state.weightUi ?? {};
 
   if (view.loadFailed) {
-    container.append(
+    append(container,
       h(
         'div',
         { class: 'card stack' },
@@ -84,7 +84,7 @@ export function render(container, state) {
   }
   if (!state.weights) {
     // Still loading (it's quick, so no spinner), or offline with nothing saved yet.
-    if (state.offline) container.append(h('p', { class: 'card muted' }, t('app.offlineNoData')));
+    if (state.offline) append(container, h('p', { class: 'card muted' }, t('app.offlineNoData')));
     return;
   }
 
@@ -101,7 +101,7 @@ export function render(container, state) {
 
   // Phone order: form, chart, history. On wide screens the chart moves to the
   // left column, the form and history stack on the right (see app.css).
-  container.append(
+  append(container,
     state.weights.length > 0 && renderHero(state.weights.at(-1), trend),
     h(
       'div',

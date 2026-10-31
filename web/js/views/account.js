@@ -1,11 +1,12 @@
 import { api } from '../api.js';
-import { h } from '../dom.js';
+import { append, h } from '../dom.js';
 import { todayIso } from '../format.js';
 import { browserLanguage, saveLanguage, t } from '../i18n.js';
 import { getState, SIGNED_OUT, setState } from '../store.js';
 import { saveTheme } from '../theme.js';
 import { avatar, displayName } from './avatar.js';
 import { hero } from './hero.js';
+import { privacyButton, privacyDialog } from './privacy.js';
 
 export const title = 'account.title';
 
@@ -36,18 +37,9 @@ function setUi(patch) {
   setState({ accountUi: { ...ui(), ...patch } });
 }
 
-/**
- * Called whenever this screen becomes active: start without stale messages,
- * and fetch the server's release version (`state.appVersion`, not per-user).
- */
-export async function load() {
+/** Called whenever this screen becomes active: start without stale messages. */
+export function load() {
   setState({ accountUi: {} });
-  try {
-    const { version } = await api('GET', '/api/health');
-    setState({ appVersion: version });
-  } catch {
-    // Not shown, then; it's only informational.
-  }
 }
 
 export function render(container, state) {
@@ -57,7 +49,7 @@ export function render(container, state) {
   const offline = state.offline;
 
   // Two columns on wide screens; on phones the first one, then the second.
-  container.append(
+  append(container,
     h('h1', { id: 'page-title', tabindex: '-1' }, t('account.title')),
     renderHero(state),
     h(
@@ -120,9 +112,10 @@ export function render(container, state) {
         { class: 'account-column' },
         renderDataSection(view, offline),
         renderDeleteSection(view, offline),
-        state.appVersion && h('p', { class: 'muted app-version' }, t('account.version', { version: state.appVersion })),
+        renderAbout(state.about),
       ),
     ),
+    privacyDialog(state),
   );
 }
 
@@ -226,6 +219,25 @@ function renderDataSection(view, offline) {
         t('account.export'),
       ),
     ),
+  );
+}
+
+/**
+ * The fine print at the bottom: no warranty, not medical advice, keep a copy;
+ * the privacy notice; the release (from /api/about, left out until it's loaded).
+ */
+function renderAbout(about) {
+  return h(
+    'div',
+    { class: 'about' },
+    h(
+      'p',
+      { class: 'disclaimer' },
+      h('span', { class: 'icon icon-info', 'aria-hidden': 'true' }),
+      h('span', {}, t('account.disclaimer')),
+    ),
+    h('p', { class: 'app-version' }, privacyButton('account.privacy')),
+    about && h('p', { class: 'muted app-version' }, t('account.version', { version: about.version })),
   );
 }
 

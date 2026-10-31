@@ -13,6 +13,8 @@ pub enum AppError {
     BadRequest(&'static str),
     /// No valid session.
     Unauthorized,
+    /// Signed in, but not allowed yet; the code says why (`consent_required`).
+    Forbidden(&'static str),
     NotFound,
     /// The request clashes with existing data (e.g. `overlapping_period`).
     Conflict(&'static str),
@@ -30,6 +32,7 @@ impl IntoResponse for AppError {
         let (status, code) = match self {
             AppError::BadRequest(code) => (StatusCode::BAD_REQUEST, code),
             AppError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized"),
+            AppError::Forbidden(code) => (StatusCode::FORBIDDEN, code),
             AppError::NotFound => (StatusCode::NOT_FOUND, "not_found"),
             AppError::Conflict(code) => (StatusCode::CONFLICT, code),
             AppError::MethodNotAllowed => (StatusCode::METHOD_NOT_ALLOWED, "method_not_allowed"),

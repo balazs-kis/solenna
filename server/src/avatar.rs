@@ -10,7 +10,7 @@ use reqwest::Url;
 /// Google resizes pictures on request. The largest avatar is 72 CSS px (the
 /// Account header); over 5x that covers any phone screen's device pixels per CSS px.
 const SIZE_PX: u32 = 384;
-/// A 384px JPEG is usually 25–50 KB; anything far bigger isn't what we asked for.
+/// A 384px WebP is usually 15–50 KB; anything far bigger isn't what we asked for.
 const MAX_BYTES: usize = 200 * 1024;
 /// Sign-in waits for the download, so keep it short. On timeout there's just no picture.
 const TIMEOUT: Duration = Duration::from_secs(5);
@@ -48,8 +48,11 @@ pub async fn fetch(http: &reqwest::Client, picture: Option<&str>) -> Option<Avat
 }
 
 /// Only https URLs on Google's picture host are fetched. Current ones end in a
-/// size option like `=s96-c`, which is replaced with ours. Others (an older
-/// format sized by a query string) are fetched as they are.
+/// size option like `=s96-c`, which is replaced with ours. Ours also asks for
+/// WebP (`rw`): Google otherwise keeps the original format, and a picture
+/// uploaded as PNG comes back as a 384px PNG of a few hundred KB (WebP is about
+/// as small as JPEG, and keeps transparency). Others (an older format sized by
+/// a query string) are fetched as they are.
 fn sized_url(picture: &str) -> Option<Url> {
     let mut url = Url::parse(picture).ok()?;
     let google_host = url
@@ -59,7 +62,7 @@ fn sized_url(picture: &str) -> Option<Url> {
         return None;
     }
     if let Some((base, _size)) = url.path().split_once('=') {
-        let path = format!("{base}=s{SIZE_PX}-c");
+        let path = format!("{base}=s{SIZE_PX}-c-rw");
         url.set_path(&path);
     }
     Some(url)
@@ -113,11 +116,11 @@ mod tests {
         let cases = [
             (
                 "https://lh3.googleusercontent.com/a/ACg8ocK=s96-c",
-                "https://lh3.googleusercontent.com/a/ACg8ocK=s384-c",
+                "https://lh3.googleusercontent.com/a/ACg8ocK=s384-c-rw",
             ),
             (
                 "https://lh3.googleusercontent.com/a/ACg8ocK=s96-c?x=1",
-                "https://lh3.googleusercontent.com/a/ACg8ocK=s384-c?x=1",
+                "https://lh3.googleusercontent.com/a/ACg8ocK=s384-c-rw?x=1",
             ),
             // No size suffix: left alone.
             (

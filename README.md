@@ -33,7 +33,7 @@ curl -fsSLO https://raw.githubusercontent.com/balazs-kis/solenna/main/compose.ya
 curl -fsSL https://raw.githubusercontent.com/balazs-kis/solenna/main/.env.example -o .env
 ```
 
-Set `SOLENNA_BASE_URL=https://solenna.example.com` (no trailing slash) and fill in `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. `SOLENNA_PORT` and `SOLENNA_DATA_DIR` are fixed by `compose.yaml` and can be left as they are. `.env` holds the client secret: keep it readable only by you (`chmod 600 .env`).
+Set `SOLENNA_BASE_URL=https://solenna.example.com` (no trailing slash) and fill in `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. Set `SOLENNA_CONTACT` to your name and an email address: the privacy notice names you as the person responsible for the data (the data controller), and users write to you there with requests. The notice also describes this README's setup: encrypted backups kept for 30 days and the log rotation in `compose.yaml`. If you change either, the notice no longer matches (`privacy.*` in `web/i18n/`). `SOLENNA_PORT` and `SOLENNA_DATA_DIR` are fixed by `compose.yaml` and can be left as they are. `.env` holds the client secret: keep it readable only by you (`chmod 600 .env`).
 
 The database lives in `./data`. The container runs as uid 10001, so it needs to own that directory:
 

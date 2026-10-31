@@ -17,6 +17,8 @@ export const SIGNED_OUT = {
   periods: undefined,
   cycleUi: undefined,
   accountUi: undefined,
+  consentUi: undefined,
+  privacyOpen: undefined,
   avatarFailed: undefined,
 };
 

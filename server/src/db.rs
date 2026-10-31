@@ -17,7 +17,10 @@ use crate::error::AppError;
 /// Migrations land together with the code that uses them. Never edit a committed
 /// migration; add a new one. (Before the first deployment, the history up to
 /// then was merged into 0001_init.sql once.)
-const MIGRATIONS: &[&str] = &[include_str!("../migrations/0001_init.sql")];
+const MIGRATIONS: &[&str] = &[
+    include_str!("../migrations/0001_init.sql"),
+    include_str!("../migrations/0002_consent.sql"),
+];
 
 /// Current time as Unix seconds (UTC), the format of every timestamp column.
 pub fn unix_now() -> i64 {

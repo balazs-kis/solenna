@@ -8,7 +8,7 @@ import {
   todayStatus,
   withoutFertility,
 } from '../cycle-math.js';
-import { h } from '../dom.js';
+import { append, h } from '../dom.js';
 import { daysBetween, formatDay, formatDayLong, formatDays, formatRelativeDay, todayIso } from '../format.js';
 import { t } from '../i18n.js';
 import { getState, remember, setState, subscribe } from '../store.js';
@@ -79,11 +79,11 @@ export async function load() {
 }
 
 export function render(container, state) {
-  container.append(h('h1', { id: 'page-title', tabindex: '-1' }, t('cycle.title')));
+  append(container, h('h1', { id: 'page-title', tabindex: '-1' }, t('cycle.title')));
   const view = state.cycleUi ?? {};
 
   if (view.loadFailed) {
-    container.append(
+    append(container,
       h(
         'div',
         { class: 'card stack' },
@@ -95,7 +95,7 @@ export function render(container, state) {
   }
   if (!state.periods) {
     // Still loading, or offline with nothing saved yet.
-    if (state.offline) container.append(h('p', { class: 'card muted' }, t('app.offlineNoData')));
+    if (state.offline) append(container, h('p', { class: 'card muted' }, t('app.offlineNoData')));
     return;
   }
 
@@ -108,7 +108,7 @@ export function render(container, state) {
 
   // Phone order: quick action, calendar, events, disclaimer. On wide screens
   // the calendar moves to the left column (see app.css).
-  container.append(
+  append(container,
     renderHero(analysis, status, showFertility),
     h(
       'div',

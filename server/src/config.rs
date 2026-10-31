@@ -8,6 +8,9 @@ pub struct Config {
     pub base_url: String,
     pub google_client_id: String,
     pub google_client_secret: String,
+    /// Who runs this server and how to reach them (free text, e.g. a name and an
+    /// email address), shown in the privacy notice as the data controller.
+    pub contact: String,
 }
 
 impl Config {
@@ -50,6 +53,7 @@ impl Config {
             base_url,
             google_client_id: required("GOOGLE_CLIENT_ID")?,
             google_client_secret: required("GOOGLE_CLIENT_SECRET")?,
+            contact: required("SOLENNA_CONTACT")?,
         })
     }
 
@@ -107,6 +111,7 @@ impl Config {
             base_url: "http://localhost:8080".to_string(),
             google_client_id: "test-client-id".to_string(),
             google_client_secret: "test-client-secret".to_string(),
+            contact: "Test Operator, operator@example.com".to_string(),
         }
     }
 }

@@ -1,5 +1,5 @@
 //! The signed-in user's own account: settings, the profile handover after
-//! sign-in, data export, and account deletion.
+//! sign-in, consent to the privacy notice, data export, and account deletion.
 
 use std::time::Instant;
 
@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use crate::{
     AppState,
     api::{periods::all_periods, weights::all_weights},
-    auth::{CurrentUser, clear_session_cookie},
+    auth::{CurrentUser, SignedIn, clear_session_cookie},
     db::unix_now,
     error::AppError,
 };
@@ -34,20 +34,21 @@ pub struct Settings {
 }
 
 /// The signed-in user's settings. 401 when not signed in, which is how the
-/// frontend decides to show the login screen.
+/// frontend decides to show the login screen. `consented_at` is null until the
+/// user agrees to the privacy notice; the frontend asks for that first.
 ///
 /// `profile` (name, email, picture as a `data:` URL) is only there on the
 /// session's first call after signing in: the server doesn't store it, so the
 /// browser keeps it (see `PendingProfiles`). `id` lets the browser tell whether
 /// a profile it kept belongs to this user.
-pub async fn get(
-    State(state): State<AppState>,
-    user: CurrentUser,
-) -> Result<Json<Value>, AppError> {
+pub async fn get(State(state): State<AppState>, user: SignedIn) -> Result<Json<Value>, AppError> {
     let user_id = user.id;
-    let settings = state
+    let (settings, consented_at) = state
         .db
-        .call(move |conn| Ok(read_settings(conn, user_id)?))
+        .call(move |conn| {
+            let settings = read_settings(conn, user_id)?;
+            Ok((settings, read_consent(conn, user_id)?))
+        })
         .await?;
     // Only now: if the read had failed, the one-time profile would be lost.
     let profile = state.profiles.take(&user.session, Instant::now());
@@ -60,9 +61,42 @@ pub async fn get(
     });
     Ok(Json(json!({
         "id": user_id,
+        "consented_at": consented_at,
         "settings": settings,
         "profile": profile,
     })))
+}
+
+/// When the user agreed to the privacy notice (Unix seconds), if they have.
+fn read_consent(conn: &rusqlite::Connection, user_id: i64) -> rusqlite::Result<Option<i64>> {
+    conn.query_row(
+        "SELECT consented_at FROM users WHERE id = ?",
+        [user_id],
+        |row| row.get(0),
+    )
+}
+
+/// The user agrees to the privacy notice: explicit consent to storing their
+/// health data. Until then every data route answers 403 `consent_required`
+/// (see `CurrentUser`). Agreeing again keeps the first date.
+pub async fn consent(
+    State(state): State<AppState>,
+    user: SignedIn,
+) -> Result<Json<Value>, AppError> {
+    let now = unix_now();
+    let consented_at = state
+        .db
+        .call(move |conn| {
+            conn.execute(
+                "UPDATE users SET consented_at = ?1, updated_at = ?1
+                 WHERE id = ?2 AND consented_at IS NULL",
+                (now, user.id),
+            )?;
+            Ok(read_consent(conn, user.id)?)
+        })
+        .await?;
+    tracing::info!("user {} agreed to the privacy notice", user.id);
+    Ok(Json(json!({ "consented_at": consented_at })))
 }
 
 fn read_settings(conn: &rusqlite::Connection, user_id: i64) -> rusqlite::Result<Settings> {
@@ -123,12 +157,12 @@ pub async fn export(
         .db
         .call(move |conn| {
             let tx = conn.transaction()?;
-            let created_at: i64 = tx.query_row(
-                "SELECT created_at FROM users WHERE id = ?",
+            let (created_at, consented_at): (i64, Option<i64>) = tx.query_row(
+                "SELECT created_at, consented_at FROM users WHERE id = ?",
                 [user.id],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )?;
-            let account = json!({ "created_at": created_at });
+            let account = json!({ "created_at": created_at, "consented_at": consented_at });
             let settings = read_settings(&tx, user.id)?;
             Ok(json!({
                 "format": "solenna-export",
@@ -145,13 +179,11 @@ pub async fn export(
 }
 
 /// Hard-deletes the user. Their sessions, weigh-ins and periods go with them
-/// (`ON DELETE CASCADE`), and this browser's session cookie is cleared.
+/// (`ON DELETE CASCADE`), and this browser's session cookie is cleared. Also
+/// how a user declines the privacy notice, so it doesn't need consent.
 /// secure_delete zeroes the rows, but in WAL mode the old pages stay in the
 /// files until a checkpoint, so one runs straight away (see `db::checkpoint`).
-pub async fn delete(
-    State(state): State<AppState>,
-    user: CurrentUser,
-) -> Result<Response, AppError> {
+pub async fn delete(State(state): State<AppState>, user: SignedIn) -> Result<Response, AppError> {
     let user_id = user.id;
     state
         .db
@@ -183,7 +215,10 @@ mod tests {
     use serde_json::{Value, json};
     use tower::ServiceExt;
 
-    use crate::{auth::test_session, router, test_state};
+    use crate::{
+        auth::{test_session, test_session_without_consent},
+        router, test_state,
+    };
 
     async fn call(
         app: &Router,
@@ -325,7 +360,7 @@ mod tests {
                 .unwrap()
                 .keys()
                 .collect::<Vec<_>>(),
-            ["created_at"]
+            ["consented_at", "created_at"]
         );
         assert_eq!(
             export["weights"],
@@ -433,6 +468,80 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn nothing_is_stored_or_shown_before_consent() {
+        let state = test_state();
+        let carol = test_session_without_consent(&state, "sub-c", "carol@example.com").await;
+        let app = router(state);
+
+        let (status, me) = call(&app, "GET", "/api/me", &carol, None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(me["consented_at"], Value::Null);
+
+        let settings = json!({ "language": "hu", "track_cycle": true, "show_fertility": true });
+        let period = json!({ "start_day": "2026-10-01", "end_day": "2026-10-05" });
+        for (method, uri, body) in [
+            ("GET", "/api/weights", None),
+            (
+                "PUT",
+                "/api/weights/2026-10-20",
+                Some(json!({ "weight_g": 72_400 })),
+            ),
+            ("DELETE", "/api/weights/2026-10-20", None),
+            ("GET", "/api/periods", None),
+            ("POST", "/api/periods", Some(period.clone())),
+            ("PUT", "/api/periods/1", Some(period)),
+            ("DELETE", "/api/periods/1", None),
+            ("PUT", "/api/me/settings", Some(settings)),
+            ("GET", "/api/me/export", None),
+        ] {
+            let (status, body) = call(&app, method, uri, &carol, body).await;
+            assert_eq!(
+                (status, body),
+                (
+                    StatusCode::FORBIDDEN,
+                    json!({ "error": "consent_required" })
+                ),
+                "{method} {uri}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn consenting_unlocks_the_data_routes_and_keeps_the_first_date() {
+        let state = test_state();
+        let carol = test_session_without_consent(&state, "sub-c", "carol@example.com").await;
+        let app = router(state);
+
+        let (status, first) = call(&app, "POST", "/api/me/consent", &carol, None).await;
+        assert_eq!(status, StatusCode::OK);
+        let consented_at = first["consented_at"].as_i64().unwrap();
+        let (_, me) = call(&app, "GET", "/api/me", &carol, None).await;
+        assert_eq!(me["consented_at"], json!(consented_at));
+
+        let (_, again) = call(&app, "POST", "/api/me/consent", &carol, None).await;
+        assert_eq!(again, first);
+        add_data(&app, &carol, 60_000).await;
+    }
+
+    #[tokio::test]
+    async fn declining_deletes_the_sign_in() {
+        let state = test_state();
+        let carol = test_session_without_consent(&state, "sub-c", "carol@example.com").await;
+        let db = state.db.clone();
+        let app = router(state);
+
+        let (status, _) = call(&app, "DELETE", "/api/me", &carol, None).await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (status, _) = call(&app, "GET", "/api/me", &carol, None).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        let users: i64 = db
+            .call(|conn| Ok(conn.query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0))?))
+            .await
+            .unwrap();
+        assert_eq!(users, 0);
+    }
+
+    #[tokio::test]
     async fn requires_a_session() {
         let (app, _, _) = app_with_users().await;
         for (method, uri) in [
@@ -440,6 +549,7 @@ mod tests {
             ("PUT", "/api/me/settings"),
             ("GET", "/api/me/export"),
             ("DELETE", "/api/me"),
+            ("POST", "/api/me/consent"),
         ] {
             let (status, _) = call(&app, method, uri, "other=1", Some(json!({}))).await;
             assert_eq!(status, StatusCode::UNAUTHORIZED, "{method} {uri}");
