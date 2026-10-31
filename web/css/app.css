@@ -67,9 +67,11 @@
   --gap: 14px;
   /* Hover: a light tint over a control's own background (see the end of this file). */
   --hover: light-dark(rgb(31 26 29 / 0.07), rgb(255 255 255 / 0.09));
-  /* The phone tab bar: its height (54px items, 6px padding, 1px border) and gap to the bottom */
-  --nav-height: 68px;
-  --nav-bottom: 26px;
+  /* The phone tab bar: its height (48px items, 5px padding, 1px border) and gap
+     to the bottom. With a home indicator (iOS) it sits inside that area, like the
+     system's own tab bars, instead of on top of it. */
+  --nav-height: 60px;
+  --nav-bottom: max(20px, calc(env(safe-area-inset-bottom) - 12px));
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
 
   /* The base colour behind the page (the glow's spots sit on it, see
@@ -175,7 +177,7 @@
 html {
   -webkit-text-size-adjust: 100%;
   /* Keyboard focus scrolls into view above the floating tab bar, not under it. */
-  scroll-padding-bottom: calc(var(--nav-height) + var(--nav-bottom) + env(safe-area-inset-bottom));
+  scroll-padding-bottom: calc(var(--nav-height) + var(--nav-bottom));
 
   /* The sidebar doesn't cover anything. */
   @media (min-width: 768px) {
@@ -278,7 +280,7 @@ a {
 .main {
   max-width: 720px;
   margin: 0 auto;
-  padding: 1.5rem 1rem calc(var(--nav-height) + var(--nav-bottom) + env(safe-area-inset-bottom) + 1.5rem);
+  padding: 1.5rem 1rem calc(var(--nav-height) + var(--nav-bottom) + 1.5rem);
 }
 
 /* Phone: a frosted pill floating above the content, centred. It just gets
@@ -287,11 +289,11 @@ a {
    the screen, and longer labels would wrap. */
 .nav {
   position: fixed;
-  bottom: calc(var(--nav-bottom) + env(safe-area-inset-bottom));
+  bottom: var(--nav-bottom);
   left: 50%;
   z-index: 10;
   width: max-content;
-  padding: 6px;
+  padding: 5px;
   background: var(--bar);
   border: 1px solid var(--bar-border);
   border-radius: 999px;
@@ -320,7 +322,7 @@ a {
   justify-content: center;
   gap: 2px;
   min-width: 86px;
-  height: 54px;
+  height: 48px;
   padding: 0 0.5rem;
   color: var(--text-muted);
   font-size: 0.6875rem;
@@ -531,6 +533,18 @@ h3 {
 
   & input[readonly] {
     color: var(--text-muted);
+  }
+
+  /* iOS Safari gives date fields a native look with a minimum width that
+     overflows narrow cards, and centres the date. */
+  & input[type='date'] {
+    -webkit-appearance: none;
+    appearance: none;
+    min-width: 0;
+  }
+
+  & input[type='date']::-webkit-date-and-time-value {
+    text-align: start;
   }
 }
 

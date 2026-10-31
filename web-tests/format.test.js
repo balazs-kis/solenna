@@ -3,7 +3,7 @@
 import './setup.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { addDays, daysBetween, formatDay, formatDays, formatKg, formatRelativeDay } from '../web/js/format.js';
+import { addDays, daysBetween, formatDay, formatDays, formatKg, formatRelativeDay, parseKg } from '../web/js/format.js';
 import { activate } from '../web/js/i18n.js';
 
 test('calendar days add up across months, years and leap days', () => {
@@ -54,4 +54,16 @@ test('formatters are reused per language, so switching the language switches the
   assert.equal(formatDay('2026-10-28'), '2026. okt. 28.');
   activate('en');
   assert.equal(formatDay('2026-10-28'), 'Oct 28, 2026');
+});
+
+test('typed weights take a decimal point or a comma, with at most one decimal', () => {
+  assert.equal(parseKg('66'), 66000);
+  assert.equal(parseKg('66.4'), 66400);
+  assert.equal(parseKg('66,4'), 66400);
+  assert.equal(parseKg(' 102,5 '), 102500);
+  assert.equal(parseKg('66,45'), null);
+  assert.equal(parseKg('66,'), null);
+  assert.equal(parseKg('1.000'), null);
+  assert.equal(parseKg(''), null);
+  assert.equal(parseKg('abc'), null);
 });

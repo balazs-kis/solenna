@@ -255,13 +255,14 @@ function averages(periods, today) {
   const starts = periods.map((p) => cycleStart(p, today));
   // The recent gaps only, so a lasting change in cycle length (after the
   // pill, postpartum) takes over instead of being dropped as missed logs.
-  const recent = starts
-    .slice(1)
-    .map((start, i) => daysBetween(starts[i], start))
-    .filter((days) => days >= MIN_CYCLE_DAYS && days <= MAX_CYCLE_DAYS)
-    .slice(-HISTORY);
+  const gaps = starts.slice(1).map((start, i) => daysBetween(starts[i], start));
+  const recent = gaps.filter((days) => days >= MIN_CYCLE_DAYS && days <= MAX_CYCLE_DAYS).slice(-HISTORY);
   const usual = lowerMedian(recent);
   const cycleLengths = recent.filter((days) => days <= usual * MISSED_LOG_FACTOR);
+  // Gaps over the longest cycle are missed logs too, so the note mentions them.
+  // Without a measured cycle the typical-length note already explains the gaps.
+  const tooLong = gaps.slice(-HISTORY).filter((days) => days > MAX_CYCLE_DAYS).length;
+  const skippedGaps = cycleLengths.length > 0 ? recent.length - cycleLengths.length + tooLong : 0;
   // From cycle day 1, so leading spotting doesn't stretch the predicted bleeding.
   const periodLengths = periods
     .filter((p) => p.end_day)
@@ -273,8 +274,8 @@ function averages(periods, today) {
     periodLength: average(periodLengths) ?? TYPICAL_PERIOD_DAYS,
     /** 0 means the cycle length is the typical value, not measured. */
     measuredCycles: cycleLengths.length,
-    /** Recent gaps left out as missed logs (much longer than the usual cycle). */
-    skippedGaps: recent.length - cycleLengths.length,
+    /** Recent gaps left out as missed logs (over 60 days, or much longer than the usual cycle); 0 without a measured cycle. */
+    skippedGaps,
     /** 0 means the period length is the typical value. */
     measuredPeriods: periodLengths.length,
     loggedPeriods: periods.length,

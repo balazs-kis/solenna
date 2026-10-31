@@ -31,7 +31,7 @@
   "weight.save": "Save",
   "weight.cancel": "Cancel",
   "weight.saveFailed": "Couldn't save. Please try again.",
-  "weight.invalid": "Check the date and weight: the date can't be before 1900 or in the future, and the weight must be between 20 and 400 kg.",
+  "weight.invalid": "Check the date and weight: the date can't be before 1900 or in the future, and the weight must be between 20 and 400 kg, with at most one decimal.",
   "weight.value": "{value} kg",
   "weight.unit": "kg",
   "weight.latestOn": "Latest weigh-in on {date}",

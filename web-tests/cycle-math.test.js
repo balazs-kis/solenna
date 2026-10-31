@@ -132,6 +132,19 @@ test('gaps outside 15-60 days are ignored as missed logs', () => {
   assert.equal(analysis.stats.cycleLength, 28);
 });
 
+test('the averages note says when a gap over 60 days was left out', () => {
+  // A 92-day gap (two periods never logged), then a 30-day one.
+  const analysis = analyzeCycle(periods('2026-06-01', '2026-09-01', '2026-10-01'), '2026-10-10');
+  assert.equal(analysis.stats.measuredCycles, 1);
+  assert.equal(analysis.stats.skippedGaps, 1);
+});
+
+test('without a measured cycle, long gaps get no skipped-gaps note (the typical-length note covers them)', () => {
+  const analysis = analyzeCycle(periods('2026-06-01', '2026-08-30'), '2026-09-05');
+  assert.equal(analysis.stats.measuredCycles, 0);
+  assert.equal(analysis.stats.skippedGaps, 0);
+});
+
 test('cycles under 21 days get no ovulation or fertile window', () => {
   const analysis = analyzeCycle(periods('2026-08-20', '2026-09-09', '2026-09-29', '2026-10-19'), '2026-10-25');
   assert.equal(analysis.stats.cycleLength, 20);

@@ -77,3 +77,14 @@ export function formatKg(grams, { signed = false } = {}) {
     signDisplay: signed ? 'exceptZero' : 'auto',
   }).format(grams / 1000);
 }
+
+/**
+ * Grams from what was typed into the weight field, with a decimal point or a
+ * comma (phones show the region's separator on the decimal keypad), at most one
+ * decimal. Null for anything else; the server checks the range.
+ */
+export function parseKg(text) {
+  const match = /^\s*(\d{1,3})(?:[.,](\d))?\s*$/.exec(text);
+  if (!match) return null;
+  return Number(match[1]) * 1000 + Number(match[2] ?? 0) * 100;
+}

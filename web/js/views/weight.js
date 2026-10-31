@@ -1,6 +1,6 @@
 import { api } from '../api.js';
 import { append, h } from '../dom.js';
-import { addDays, formatDay, formatKg, todayIso } from '../format.js';
+import { addDays, formatDay, formatKg, parseKg, todayIso } from '../format.js';
 import { t } from '../i18n.js';
 import { getState, remember, setState } from '../store.js';
 import { weightTrend } from '../weight-trend.js';
@@ -118,7 +118,7 @@ function renderForm(view, offline) {
   const editing = view.edit;
   const values = {
     day: view.draft?.day ?? editing?.day ?? todayIso(),
-    kg: view.draft?.kg ?? (editing ? (editing.weight_g / 1000).toFixed(1) : ''),
+    kg: view.draft?.kg ?? (editing ? formatKg(editing.weight_g) : ''),
   };
 
   return h(
@@ -152,11 +152,11 @@ function renderForm(view, offline) {
         h('input', {
           id: 'weight-kg',
           name: 'kg',
-          type: 'number',
+          // Text, not number: iOS Safari's number field drops the comma that
+          // the decimal keypad offers in comma regions. parseKg() takes both.
+          type: 'text',
           inputmode: 'decimal',
-          step: '0.1',
-          min: '20',
-          max: '400',
+          autocomplete: 'off',
           required: true,
           value: values.kg,
         }),
@@ -319,8 +319,11 @@ async function save(event) {
   event.preventDefault();
   const form = event.currentTarget;
   const day = form.elements.day.value;
-  const kg = form.elements.kg.value;
-  const weight_g = Math.round(Number(kg) * 1000);
+  const weight_g = parseKg(form.elements.kg.value);
+  if (weight_g === null) {
+    setUi({ draft: draftOf(form), error: 'weight.invalid' });
+    return;
+  }
 
   try {
     const saved = await api('PUT', `/api/weights/${day}`, { weight_g });
