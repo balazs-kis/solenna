@@ -1887,6 +1887,11 @@ h3 {
   font-weight: 600;
 }
 
+/* A text button under an event's text, its label lined up with the text. */
+.event-action {
+  margin: 2px 0 -10px -0.5rem;
+}
+
 .disclaimer {
   display: flex;
   gap: 0.5rem;
@@ -1916,6 +1921,18 @@ h3 {
 
   & .button {
     grid-column: 1 / -1;
+  }
+}
+
+/* The periods already logged, one per line. */
+.logged-periods {
+  & p {
+    margin: 0;
+  }
+
+  & ul {
+    margin: 2px 0 0;
+    padding-left: 1.25rem;
   }
 }
 

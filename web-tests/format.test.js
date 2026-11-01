@@ -3,7 +3,7 @@
 import './setup.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { addDays, daysBetween, formatDay, formatDays, formatKg, formatRelativeDay, parseKg } from '../web/js/format.js';
+import { addDays, daysBetween, formatDay, formatDayRange, formatDays, formatKg, formatRelativeDay, parseKg } from '../web/js/format.js';
 import { activate } from '../web/js/i18n.js';
 
 test('calendar days add up across months, years and leap days', () => {
@@ -32,6 +32,9 @@ test('English formats', () => {
   assert.equal(formatRelativeDay('2026-11-08', '2026-10-30'), 'in 9 days');
   assert.equal(formatRelativeDay('2026-10-27', '2026-10-30'), '3 days ago');
   assert.equal(formatDay('2026-10-28'), 'Oct 28, 2026');
+  // Ranges write the shared parts once (with thin spaces around the dash).
+  assert.equal(formatDayRange('2025-11-03', '2025-11-07'), 'Nov 3 – 7, 2025');
+  assert.equal(formatDayRange('2025-12-29', '2026-01-02'), 'Dec 29, 2025 – Jan 2, 2026');
   assert.equal(formatKg(72400), '72.4');
   assert.equal(formatKg(1500, { signed: true }), '+1.5');
   assert.equal(formatKg(0, { signed: true }), '0.0');
@@ -44,6 +47,7 @@ test('Hungarian formats', () => {
   assert.equal(formatKg(72400), '72,4');
   // Hungarian dates end with a period, so translations must not add one after {date}.
   assert.equal(formatDay('2026-10-28'), '2026. okt. 28.');
+  assert.equal(formatDayRange('2025-11-03', '2025-11-07'), '2025. nov. 3–7.');
   activate('en');
 });
 

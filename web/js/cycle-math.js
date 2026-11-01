@@ -213,6 +213,36 @@ export function assumedEnd(day, periods, periodLength, today) {
 }
 
 /**
+ * Which logged periods the "Add past periods" dialog lists: all of them up to
+ * 4 (hiding one would save no line), otherwise the earliest (anything added
+ * usually goes before it) and the latest two, with `{ more }` (how many are
+ * left out, at least 2) in between. Expects
+ * the periods sorted by start.
+ */
+export function loggedPeriodsShown(periods) {
+  if (periods.length <= 4) return periods;
+  return [periods[0], { more: periods.length - 3 }, ...periods.slice(-2)];
+}
+
+/** Logged periods and the rows' starts, sorted: what assumedEnd() looks ahead in. */
+function startsWithRows(rows, periods) {
+  return [...periods, ...rows.filter((row) => row.start).map((row) => ({ start_day: row.start }))]
+    .toSorted((a, b) => a.start_day.localeCompare(b.start_day));
+}
+
+/**
+ * The last day to fill in for a past period ("Add past periods") once its
+ * first day is entered: the end checkPastPeriods() would assume without one
+ * (the average length, never into the next period or row). '' when there's
+ * nothing to fill in: no first day, one in the future, or a period that could
+ * still be going on (left without a last day, it's saved as ongoing).
+ */
+export function pastPeriodEnd(start, rows, periods, periodLength, today) {
+  if (!start || start > today) return '';
+  return assumedEnd(start, startsWithRows(rows, periods), periodLength, today) ?? '';
+}
+
+/**
  * Past periods entered all at once ("Add past periods"): `rows` are
  * `{ start, end }` as typed, '' where empty. Each row becomes
  * `{ period: { start_day, end_day } }`, or `{ error }` with 'missingStart',
@@ -228,8 +258,7 @@ export function assumedEnd(day, periods, periodLength, today) {
 export function checkPastPeriods(rows, periods, periodLength, today) {
   const logged = periods.map((p) => ({ start_day: p.start_day, end_day: loggedEnd(p, today) }));
   const ongoing = periods.find((p) => p.end_day === null);
-  const starts = [...periods, ...rows.filter((row) => row.start).map((row) => ({ start_day: row.start }))]
-    .toSorted((a, b) => a.start_day.localeCompare(b.start_day));
+  const starts = startsWithRows(rows, periods);
   const saved = [];
   return rows.map((row) => {
     if (!row.start && !row.end) return null;

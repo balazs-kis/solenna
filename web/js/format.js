@@ -52,6 +52,19 @@ export function formatDay(day) {
     .format(new Date(year, month - 1, date));
 }
 
+/**
+ * Two days as one range, the shared parts written once: e.g. "Nov 3 – 7, 2025"
+ * / "2025. nov. 3–7.", "Dec 29, 2025 – Jan 2, 2026".
+ */
+export function formatDayRange(from, to) {
+  const date = (day) => {
+    const [year, month, date] = day.split('-').map(Number);
+    return new Date(year, month - 1, date);
+  };
+  return formatter(Intl.DateTimeFormat, { year: 'numeric', month: 'short', day: 'numeric' })
+    .formatRange(date(from), date(to));
+}
+
 /** e.g. "Tuesday, October 27" / "október 27., kedd" */
 export function formatDayLong(day) {
   const [year, month, date] = day.split('-').map(Number);

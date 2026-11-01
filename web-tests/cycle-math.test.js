@@ -4,7 +4,16 @@
 import './setup.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { analyzeCycle, assumedEnd, checkPastPeriods, cycleStart, todayStatus, withoutFertility } from '../web/js/cycle-math.js';
+import {
+  analyzeCycle,
+  assumedEnd,
+  checkPastPeriods,
+  cycleStart,
+  loggedPeriodsShown,
+  pastPeriodEnd,
+  todayStatus,
+  withoutFertility,
+} from '../web/js/cycle-math.js';
 import { addDays } from '../web/js/format.js';
 
 let nextId = 1;
@@ -324,4 +333,24 @@ test('past periods: an ongoing period that was never ended blocks later rows, li
   const [after, before] = checkPastPeriods(rows, [stale], 5, '2026-10-30');
   assert.deepEqual(after, { error: 'afterOngoing', other: stale });
   assert.ok(before.period);
+});
+
+test('the add-past-periods dialog lists up to 4 logged periods, then the earliest and the latest two', () => {
+  const few = periods('2026-07-13', '2026-08-10', '2026-09-07', '2026-10-05');
+  assert.deepEqual(loggedPeriodsShown(few), few);
+  const many = periods('2026-05-18', '2026-06-15', '2026-07-13', '2026-08-10', '2026-09-07', '2026-10-05');
+  assert.deepEqual(loggedPeriodsShown(many), [many[0], { more: 3 }, many[4], many[5]]);
+});
+
+test("a past period's last day is filled in like an assumed end: usual length, never into the next period", () => {
+  const today = '2026-11-01';
+  const logged = periods('2026-10-03');
+  assert.equal(pastPeriodEnd('2026-05-01', [], logged, 5, today), '2026-05-05');
+  // Not into the next row's period either.
+  const rows = [{ start: '2026-05-01' }, { start: '2026-05-04' }];
+  assert.equal(pastPeriodEnd('2026-05-01', rows, logged, 5, today), '2026-05-03');
+  // Nothing to fill in: no start, a future one, or one that could still be going on.
+  assert.equal(pastPeriodEnd('', [], [], 5, today), '');
+  assert.equal(pastPeriodEnd('2026-11-05', [], [], 5, today), '');
+  assert.equal(pastPeriodEnd('2026-10-30', [], [], 5, today), '');
 });

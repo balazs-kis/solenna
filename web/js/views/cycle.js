@@ -4,12 +4,14 @@ import {
   assumedEnd,
   checkPastPeriods,
   loggedEnd,
+  loggedPeriodsShown,
   MAX_PERIOD_DAYS,
+  pastPeriodEnd,
   todayStatus,
   withoutFertility,
 } from '../cycle-math.js';
 import { append, h } from '../dom.js';
-import { daysBetween, formatDay, formatDayLong, formatDays, formatRelativeDay, todayIso } from '../format.js';
+import { daysBetween, formatDay, formatDayLong, formatDayRange, formatDays, formatRelativeDay, todayIso } from '../format.js';
 import { t } from '../i18n.js';
 import { getState, remember, setState, subscribe } from '../store.js';
 import { fertilityLabels, fertilityMarker, flowLabels, renderCalendar } from './cycle-calendar.js';
@@ -512,6 +514,13 @@ function renderEvents(analysis, status, showFertility) {
       'repeat',
       t('cycle.averages', { cycle: formatDays(stats.cycleLength), period: formatDays(stats.periodLength) }),
       averagesSource(stats),
+      // Once the card asking for history is gone, more can still be added here.
+      !showsHistoryPrompt(analysis) &&
+        h(
+          'button',
+          { type: 'button', id: 'history-open', class: 'link-button event-action', onclick: openHistory },
+          t('cycle.historyOpen'),
+        ),
     ),
   );
 
@@ -534,7 +543,7 @@ function fertilityCards(status, today) {
         'fertile',
         'sprout',
         fertile.now ? t('cycle.fertileNow') : t('cycle.fertileFrom', { when: formatRelativeDay(fertile.start, today) }),
-        t('cycle.dateRange', { from: formatDay(fertile.start), to: formatDay(fertile.end) }),
+        formatDayRange(fertile.start, fertile.end),
       ),
     );
   }
@@ -568,12 +577,12 @@ function averagesSource(stats) {
   return parts.join(' ');
 }
 
-function eventCard(kind, icon, heading, text) {
+function eventCard(kind, icon, heading, text, action = null) {
   return h(
     'li',
     { class: `card event event-${kind}` },
     h('span', { class: 'event-icon', 'aria-hidden': 'true' }, h('span', { class: `icon icon-${icon}` })),
-    h('div', {}, h('p', { class: 'event-title' }, heading), h('p', { class: 'muted' }, text)),
+    h('div', {}, h('p', { class: 'event-title' }, heading), h('p', { class: 'muted' }, text), action),
   );
 }
 
@@ -719,14 +728,25 @@ function saveError(error) {
 }
 
 // --- Adding past periods -----------------------------------------------------
-// With fewer than 3 periods logged (none included), a card offers to add the
-// ones the user remembers, in a dialog: one row per period, its first and
-// last day only. `cycleUi.history` is the open dialog: rows ({ key, start,
+// While fewer than 3 cycles are measured (the averages card's count) and
+// fewer than 6 periods are logged, a card offers to add the periods the user remembers, in a dialog: one row per
+// period, its first and last day only. After that, a button on the averages
+// card opens the same dialog. `cycleUi.history` is the open dialog: rows ({ key, start,
 // end }, as typed), results (checkPastPeriods() of the last save attempt, for
 // the row errors), error (i18n key), saving.
 
-/** The card shows while fewer periods than this are logged. */
-const HISTORY_PROMPT_BELOW = 3;
+/**
+ * The card shows while fewer cycles than this are measured, but not past this
+ * many logged periods: with long or irregular cycles (gaps over 60 days don't
+ * count) it would otherwise never go, and the averages note explains the gaps.
+ */
+const HISTORY_PROMPT_CYCLES = 3;
+const HISTORY_PROMPT_MAX_PERIODS = 6;
+
+function showsHistoryPrompt(analysis) {
+  const { measuredCycles, loggedPeriods } = analysis.stats;
+  return measuredCycles < HISTORY_PROMPT_CYCLES && loggedPeriods < HISTORY_PROMPT_MAX_PERIODS;
+}
 
 const pastPeriodErrors = {
   missingStart: 'cycle.historyMissingStart',
@@ -737,12 +757,13 @@ const pastPeriodErrors = {
 // Keys for the rows: element ids that stay the same across re-renders.
 let nextRowKey = 1;
 
+/** endFilled: the last day was filled in from the usual length, not typed. */
 function emptyRow() {
-  return { key: nextRowKey++, start: '', end: '' };
+  return { key: nextRowKey++, start: '', end: '', endFilled: false };
 }
 
 function renderHistoryPrompt(analysis) {
-  if (analysis.stats.loggedPeriods >= HISTORY_PROMPT_BELOW) return null;
+  if (!showsHistoryPrompt(analysis)) return null;
   return h(
     'section',
     { class: 'card history-prompt' },
@@ -763,9 +784,6 @@ function renderHistoryPrompt(analysis) {
 function renderHistoryDialog(history, periods, analysis, offline) {
   if (!history) return null;
   const { today, stats } = analysis;
-  const logged = periods.map((p) =>
-    t('cycle.dateRange', { from: formatDay(p.start_day), to: formatDay(loggedEnd(p, today)) }),
-  );
   return h(
     'dialog',
     {
@@ -781,7 +799,7 @@ function renderHistoryDialog(history, periods, analysis, offline) {
     },
     h(
       'form',
-      { class: 'stack', novalidate: true, onsubmit: saveHistory, oninput: keepRows, onfocusin: showRows },
+      { class: 'stack', novalidate: true, onsubmit: saveHistory, oninput: keepRows },
       h(
         'div',
         { class: 'dialog-header' },
@@ -800,8 +818,8 @@ function renderHistoryDialog(history, periods, analysis, offline) {
         ),
       ),
       h('p', { class: 'muted' }, t('cycle.historyIntro')),
-      logged.length > 0 && h('p', { class: 'muted' }, t('cycle.historyLogged', { periods: logged.join(', ') })),
-      history.error && h('p', { class: 'error', role: 'alert' }, t(history.error)),
+      renderLoggedPeriods(periods, today),
+      history.error && h('p', { id: 'history-error', class: 'error', role: 'alert' }, t(history.error)),
       h(
         'ul',
         { class: 'history-rows' },
@@ -837,21 +855,35 @@ function renderHistoryDialog(history, periods, analysis, offline) {
   );
 }
 
+/**
+ * The periods already logged, so the user sees where their history starts:
+ * the earliest and the latest ones, one per line (loggedPeriodsShown()).
+ */
+function renderLoggedPeriods(periods, today) {
+  if (periods.length === 0) return null;
+  return h(
+    'div',
+    { class: 'logged-periods muted' },
+    h('p', { id: 'history-logged' }, t('cycle.historyLogged')),
+    h(
+      'ul',
+      { 'aria-labelledby': 'history-logged' },
+      loggedPeriodsShown(periods).map((item) =>
+        h(
+          'li',
+          {},
+          item.more
+            ? t('cycle.historyLoggedMore', { count: item.more })
+            : formatDayRange(item.start_day, loggedEnd(item, today)),
+        ),
+      ),
+    ),
+  );
+}
+
 /** One period: its first and last day, a remove button, and a hint or what's wrong. */
 function renderHistoryRow(row, index, result, periodLength) {
-  let message = null;
-  if (result?.error === 'overlap') {
-    const range = t('cycle.dateRange', { from: formatDay(result.other.start_day), to: formatDay(result.other.end_day) });
-    message = h('p', { class: 'error' }, t('cycle.historyOverlap', { range }));
-  } else if (result?.error === 'afterOngoing') {
-    message = h('p', { class: 'error' }, t('cycle.historyAfterOngoing', { date: formatDay(result.other.start_day) }));
-  } else if (result?.error === 'tooLong') {
-    message = h('p', { class: 'error' }, t('cycle.historyTooLong', { days: formatDays(MAX_PERIOD_DAYS) }));
-  } else if (result?.error) {
-    message = h('p', { class: 'error' }, t(pastPeriodErrors[result.error]));
-  } else if (row.start && !row.end) {
-    message = h('p', { class: 'muted' }, t('cycle.historyNoEnd', { days: formatDays(periodLength) }));
-  }
+  const today = todayIso();
   const field = (name, label) =>
     h(
       'div',
@@ -862,7 +894,7 @@ function renderHistoryRow(row, index, result, periodLength) {
         name: `${name}-${row.key}`,
         type: 'date',
         min: '1900-01-01',
-        max: todayIso(),
+        max: today,
         value: row[name],
       }),
     );
@@ -886,8 +918,35 @@ function renderHistoryRow(row, index, result, periodLength) {
       },
       h('span', { class: 'icon icon-trash', 'aria-hidden': 'true' }),
     ),
-    message,
+    renderRowMessage(row, result, periodLength),
   );
+}
+
+/**
+ * The line under a row's dates: what's wrong with it, or the hint for a
+ * missing last day. Always there (hidden when empty), so keepRows() can
+ * replace it as the dates are typed.
+ */
+function renderRowMessage(row, result, periodLength) {
+  const id = `history-message-${row.key}`;
+  if (result?.error === 'overlap') {
+    const range = formatDayRange(result.other.start_day, result.other.end_day);
+    return h('p', { id, class: 'error' }, t('cycle.historyOverlap', { range }));
+  }
+  if (result?.error === 'afterOngoing') {
+    return h('p', { id, class: 'error' }, t('cycle.historyAfterOngoing', { date: formatDay(result.other.start_day) }));
+  }
+  if (result?.error === 'tooLong') {
+    return h('p', { id, class: 'error' }, t('cycle.historyTooLong', { days: formatDays(MAX_PERIOD_DAYS) }));
+  }
+  if (result?.error) return h('p', { id, class: 'error' }, t(pastPeriodErrors[result.error]));
+  if (row.endFilled) {
+    return h('p', { id, class: 'muted' }, t('cycle.historyEndFilled'));
+  }
+  if (row.start && !row.end) {
+    return h('p', { id, class: 'muted' }, t('cycle.historyNoEnd', { days: formatDays(periodLength) }));
+  }
+  return h('p', { id, hidden: true });
 }
 
 function setHistory(patch) {
@@ -902,37 +961,47 @@ function openHistory() {
 
 function closeHistory() {
   setUi({ history: null });
-  // Back to the button, or to the page once enough is logged and the card is
-  // gone; not if a save finished after the user went to another screen.
+  // Back to the button that opened it (on the card, or on the averages card
+  // once the card is gone); not if a save finished after the user went to
+  // another screen.
   if (getState().path !== '/cycle') return;
-  (document.getElementById('history-open') ?? document.getElementById('page-title'))?.focus();
+  document.getElementById('history-open')?.focus();
 }
 
 /**
- * Keeps the dates as they're typed, without a re-render: the browser takes a
- * date as complete while its year is still being typed (2 is the year 0002),
- * and a new input would put the caret back on the first part. Old errors
- * go: they were about the old dates.
+ * Keeps the dates as they're typed, without a re-render. A re-render rebuilds
+ * the inputs: while a year is being typed (the browser takes 2 as the year
+ * 0002) it would put the caret back on the first part, and between a click's
+ * mousedown and mouseup it would swallow the click that opens the date picker.
+ * So what follows the dates is updated in place instead, the way the next
+ * render builds it: each row's message, and no old errors, there or above
+ * the rows (they were about the old dates).
+ *
+ * Entering a first day fills in the last day (pastPeriodEnd()), so its date
+ * picker opens on that month. A filled-in last day follows the first days as
+ * they change, until the user types their own.
  */
 function keepRows(event) {
-  const { elements } = event.currentTarget;
-  const rows = ui().history.rows.map((row) => ({
-    ...row,
-    start: elements[`start-${row.key}`].value,
-    end: elements[`end-${row.key}`].value,
-  }));
+  const form = event.currentTarget;
+  const { elements } = form;
+  const changed = event.target.name;
+  const typed = ui().history.rows.map((row) => {
+    const start = elements[`start-${row.key}`].value;
+    const end = elements[`end-${row.key}`].value;
+    if (changed === `end-${row.key}`) return { ...row, start, end, endFilled: false };
+    const fill = row.endFilled || (!end && changed === `start-${row.key}`);
+    return { ...row, start, end, endFilled: fill };
+  });
+  const rows = withFilledEnds(typed);
+  const { periodLength } = shownAnalysis(getState()).stats;
+  for (const row of rows) {
+    const endInput = elements[`end-${row.key}`];
+    if (endInput.value !== row.end) endInput.value = row.end;
+    document.getElementById(`history-message-${row.key}`)?.replaceWith(renderRowMessage(row, null, periodLength));
+  }
+  for (const rowElement of form.querySelectorAll('.history-row.has-error')) rowElement.classList.remove('has-error');
+  document.getElementById('history-error')?.remove();
   remember({ cycleUi: { ...ui(), history: { ...ui().history, rows, results: null, error: null } } });
-}
-
-/**
- * Shows the kept dates (the hint for a missing last day, no old errors) once
- * focus has moved from one date to another (focusin: the new one already has
- * focus, so the re-render keeps it there). Not when focus goes to a button:
- * re-rendering between mousedown and mouseup would swallow the click, and
- * every button renders anyway.
- */
-function showRows(event) {
-  if (event.target.matches('input') && event.relatedTarget?.matches('#history-dialog input')) setHistory({});
 }
 
 function addRow() {
@@ -941,8 +1010,23 @@ function addRow() {
   document.getElementById(`history-start-${row.key}`)?.focus();
 }
 
+/**
+ * Recomputes the filled-in last days (pastPeriodEnd()): each depends on the
+ * other rows too, since it never runs into the next period.
+ */
+function withFilledEnds(rows) {
+  const today = todayIso();
+  // The cached analysis: this runs on every keystroke.
+  const { periodLength } = shownAnalysis(getState()).stats;
+  return rows.map((row) => {
+    if (!row.endFilled) return row;
+    const end = pastPeriodEnd(row.start, rows, getState().periods, periodLength, today);
+    return { ...row, end, endFilled: end !== '' };
+  });
+}
+
 function removeRow(key) {
-  const rows = ui().history.rows.filter((row) => row.key !== key);
+  const rows = withFilledEnds(ui().history.rows.filter((row) => row.key !== key));
   setHistory({ rows: rows.length > 0 ? rows : [emptyRow()], results: null, error: null });
   document.getElementById('history-add')?.focus();
 }
