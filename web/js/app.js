@@ -2,7 +2,7 @@ import { api } from './api.js';
 import { h } from './dom.js';
 import { todayIso } from './format.js';
 import { activate, browserLanguage, detectLanguage, saveLanguage, t } from './i18n.js';
-import { startRouter } from './router.js';
+import { navigate, startRouter } from './router.js';
 import { missingFromSnapshot, readSnapshot, updateSnapshot } from './snapshot.js';
 import { getState, setState, subscribe } from './store.js';
 import { applyGlow, applyTheme, savedTheme } from './theme.js';
@@ -329,6 +329,44 @@ function checkForUpdate() {
     .catch(() => {}); // Offline or unreachable: the next return tries again.
 }
 
+/**
+ * iOS turns a tap during momentum scrolling into "stop scrolling" and sends no
+ * click, so a tap on the tab bar while the page was still moving got lost. The
+ * navigation links (tab bar and sidebar) navigate on the touch itself: a short, one-finger tap that barely
+ * moved (a swipe or a long press for the link menu doesn't count).
+ * preventDefault() on touchend stops the click that would follow; if one comes
+ * anyway, navigating to the current path does nothing. Mouse, keyboard and
+ * screen readers (which send clicks) still go through the router's click
+ * handler.
+ */
+function navigateOnTap() {
+  let tap = null;
+  document.addEventListener(
+    'touchstart',
+    (event) => {
+      const link = event.target.closest?.('.nav-link');
+      const touch = event.touches[0];
+      tap = link && event.touches.length === 1
+        ? { path: link.pathname, x: touch.clientX, y: touch.clientY, time: event.timeStamp }
+        : null;
+    },
+    { passive: true },
+  );
+  document.addEventListener('touchcancel', () => {
+    tap = null;
+  });
+  document.addEventListener('touchend', (event) => {
+    const start = tap;
+    tap = null;
+    if (!start || event.touches.length > 0) return;
+    const touch = event.changedTouches[0];
+    const moved = Math.hypot(touch.clientX - start.x, touch.clientY - start.y);
+    if (moved > 10 || event.timeStamp - start.time > 500) return;
+    if (event.cancelable) event.preventDefault();
+    navigate(start.path);
+  });
+}
+
 /** Reads and removes `?auth_error=` (set by the server after a failed sign-in). */
 function takeAuthError() {
   const error = new URLSearchParams(location.search).get('auth_error');
@@ -339,6 +377,7 @@ function takeAuthError() {
 const authError = takeAuthError();
 subscribe(render);
 subscribe(updateSnapshot);
+navigateOnTap();
 // Like a request that can't reach the server (see api()): show this device's
 // copy of any data not loaded yet.
 window.addEventListener('offline', () => setState({ offline: true, ...missingFromSnapshot(getState()) }));

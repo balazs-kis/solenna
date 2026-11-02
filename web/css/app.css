@@ -342,9 +342,14 @@ a {
   --size: 24px;
 }
 
+/* The current page's ring around the picture, only in the sidebar. In the
+   phone bar the tab's highlight marks it, like the others: a ring there would
+   stand taller than the 24px icons and touch the highlight's edge. */
 .nav-account[aria-current="page"] .avatar {
-  outline: 1.5px solid var(--accent);
-  outline-offset: 1.5px;
+  @media (min-width: 768px) {
+    outline: 1.5px solid var(--accent);
+    outline-offset: 1.5px;
+  }
 }
 
 .nav-person {
